@@ -25,7 +25,7 @@ class CustomDataset(Dataset):
         # image = await loop.run_in_executor(None, self.load_image, "Images/NAIP_" + sample['fid'] + ".tif")
         # image = ToTensor()(image)
 
-        # Load and transform image
+        # Load and transform image (assuming images are found in the Images/Sample Tiffs directory)
         image = self.load_image(r"Images\Sample Tiffs\NAIP_" + str(sample['fid']) + ".tif")
 
         if self.transform is not None:
