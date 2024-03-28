@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-# From https://github.com/EPFL-VILAB/MultiMAE
+# likely loss function used in 4M (from MultiMAE)
+# From https://github.com/EPFL-VILAB/MultiMAE/blob/main/multimae/criterion.py
 
 
 class MaskedMSELoss(nn.Module):
