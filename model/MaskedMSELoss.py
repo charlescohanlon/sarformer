@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-# likely loss function used in 4M (from MultiMAE)
+# From https://github.com/EPFL-VILAB/MultiMAE
+
 
 class MaskedMSELoss(nn.Module):
     """L1 loss with masking
@@ -21,12 +22,16 @@ class MaskedMSELoss(nn.Module):
 
     def patchify(self, imgs, nh, nw):
         p = self.scale_factor
-        x = rearrange(imgs, "b c (nh p1) (nw p2) -> b (nh nw) (p1 p2 c)", nh=nh, nw=nw, p1=p, p2=p)
+        x = rearrange(
+            imgs, "b c (nh p1) (nw p2) -> b (nh nw) (p1 p2 c)", nh=nh, nw=nw, p1=p, p2=p
+        )
         return x
 
     def unpatchify(self, x, nh, nw):
         p = self.scale_factor
-        imgs = rearrange(x, "b (nh nw) (p1 p2 c) -> b c (nh p1) (nw p2)", nh=nh, nw=nw, p1=p, p2=p)
+        imgs = rearrange(
+            x, "b (nh nw) (p1 p2 c) -> b c (nh p1) (nw p2)", nh=nh, nw=nw, p1=p, p2=p
+        )
         return imgs
 
     def forward(self, input, target, mask=None):
@@ -42,7 +47,7 @@ class MaskedMSELoss(nn.Module):
             target = (target - mean) / torch.sqrt(var + eps)
             target = self.unpatchify(target, nh, nw)
 
-        loss = F.mse_loss(input, target, reduction='none')
+        loss = F.mse_loss(input, target, reduction="none")
 
         if mask is not None:
             if mask.sum() == 0:
@@ -50,13 +55,17 @@ class MaskedMSELoss(nn.Module):
 
             # Resize mask and upsample
             mask = rearrange(mask, "b (nh nw) -> b nh nw", nh=nh, nw=nw)
-            mask = F.interpolate(mask.unsqueeze(1).float(), size=(H, W), mode='nearest').squeeze(1)
+            mask = F.interpolate(
+                mask.unsqueeze(1).float(), size=(H, W), mode="nearest"
+            ).squeeze(1)
             loss = loss.mean(dim=1)  # B, C, H, W -> B, H, W
             loss = loss * mask
             # Compute mean per sample
-            loss = loss.flatten(start_dim=1).sum(dim=1) / mask.flatten(start_dim=1).sum(dim=1)
-            loss = loss.nanmean() # Account for zero masks
+            loss = loss.flatten(start_dim=1).sum(dim=1) / mask.flatten(start_dim=1).sum(
+                dim=1
+            )
+            loss = loss.nanmean()  # Account for zero masks
         else:
-            loss = loss.mean() # If this is ever nan, we want it to stop training
+            loss = loss.mean()  # If this is ever nan, we want it to stop training
 
         return loss

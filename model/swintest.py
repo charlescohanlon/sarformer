@@ -1,5 +1,5 @@
 # from SwinTransformer.models import swin_transformer_v2 as st2
-import swintransformer as st2
+import model.swintransformerv2 as st2
 import torch.nn as nn
 import torch
 
