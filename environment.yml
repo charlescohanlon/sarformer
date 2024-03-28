@@ -30,5 +30,5 @@ dependencies:
     - typing_extensions==4.7.1
     - zipp==3.15.0
     - keyboard==0.13.5
-    - torch==2.2.1
+    - torch==2.2.0
     - tokenizers==0.15.2
