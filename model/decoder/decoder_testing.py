@@ -120,7 +120,7 @@ def evaluate_model(model, data_loader, criterion, device):
 # model = Decoder4M(hidden_dim, num_decoder_layers, num_attention_heads, window_size)
 
 # Define loss and optimizer
-# criterion = nn.MSELoss() 
+# criterion = likely_loss_function.MaskedMSELoss()
 
 # would have to import optim
 # optimizer = optim.Adam(model.parameters(), lr=learning_rate)
