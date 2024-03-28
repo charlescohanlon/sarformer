@@ -6,6 +6,7 @@ from tqdm import tqdm # progress bar
 
 class Decoder4M(nn.Module):
     def __init__(self, hidden_dim, num_decoder_layers, num_attention_heads, window_size):
+        # Many more parameters to be added later!
         super(Decoder4M, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_decoder_layers = num_decoder_layers
