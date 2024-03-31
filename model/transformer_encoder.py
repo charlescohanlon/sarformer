@@ -6,8 +6,8 @@ class TransformerEncoder(nn.Module):
     def __init__(self):
         super(TransformerEncoder, self).__init__()
 
-        nn.Position
         # Parameters taken from Google's BERT implementation
+        # the nn.Transformer module includes sin/cos positional embeddings
         self.transformer = nn.Transformer(
             d_model=768,
             nhead=12,
@@ -15,8 +15,7 @@ class TransformerEncoder(nn.Module):
             num_decoder_layers=0,
             dim_feedforward=3072,
             dropout=0.5,
-            batch_first=True,  # (batch, seq, feature)
         )
 
     def forward(self, x):
-        pass
+        return self.transformer(x)
