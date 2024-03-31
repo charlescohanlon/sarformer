@@ -15,7 +15,6 @@ IMAGE_SIZE = 512
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
-# torch.backends.cudnn.benchmark = True # cudnn benchmarking only useful when the input size is constant
 
 
 class MaskedModelingTransform:
@@ -26,15 +25,15 @@ class MaskedModelingTransform:
         self.masked_tabular_portion = None
 
     def __call__(
-        self, x: Tensor, input_type: Literal["image", "text", "tabular", "target"]
+        self, x: Tensor, in_type: Literal["image", "text", "tabular", "target"]
     ):
-        if input_type == "image":
+        if in_type == "image":
             _, H, W = x.size
-            
+
             return
-        elif input_type == "text":
+        elif in_type == "text":
             pass
-        elif input_type == "tabular":
+        elif in_type == "tabular":
             pass
         else:
             assert (
@@ -52,8 +51,6 @@ def main():
     #     csv_file=CSV_FILE_NAME, delimeter=DELIMETER, transform=valid_transform
     # )
     # data_loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-    # Visualize result of DataLoader
 
 
 if __name__ == "__main__":

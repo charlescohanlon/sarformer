@@ -1,4 +1,3 @@
-import asyncio  # may use later
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
@@ -45,12 +44,6 @@ class SAR_Dataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.data.iloc[idx]
-
-        # Load and process image asynchronously (potential to speed up data loading in the future)
-        # could also make the entire data loading process (the __getitem__ function asynchronous)
-        # loop = asyncio.get_event_loop()
-        # image = await loop.run_in_executor(None, self.load_image, "Images/NAIP_" + sample['fid'] + ".tif")
-        # image = ToTensor()(image)
 
         image_tensor = self.load_topo_img(sample["FID"])  # (4, 512, 512)
 
