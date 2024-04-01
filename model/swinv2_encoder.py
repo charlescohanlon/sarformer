@@ -680,7 +680,7 @@ class SwinTransformerV2(nn.Module):
         img_size=224,
         patch_size=4,
         in_chans=3,
-        num_classes=1000,
+        # num_classes=1000,
         embed_dim=96,
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 24],
@@ -699,7 +699,7 @@ class SwinTransformerV2(nn.Module):
     ):
         super().__init__()
 
-        self.num_classes = num_classes
+        # self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
         self.ape = ape
@@ -759,11 +759,11 @@ class SwinTransformerV2(nn.Module):
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        self.head = (
-            nn.Linear(self.num_features, num_classes)
-            if num_classes > 0
-            else nn.Identity()
-        )
+        # self.head = (
+            # nn.Linear(self.num_features, num_classes)
+        #     if num_classes > 0
+        #     else nn.Identity()
+        # )
 
         self.apply(self._init_weights)
         for bly in self.layers:
@@ -802,7 +802,7 @@ class SwinTransformerV2(nn.Module):
 
     def forward(self, x):
         x = self.forward_features(x)
-        x = self.head(x)
+        # x = self.head(x)
         return x
 
     def flops(self):

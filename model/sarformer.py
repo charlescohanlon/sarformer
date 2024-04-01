@@ -1,23 +1,28 @@
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+from swinv2_encoder import SwinTransformerV2
+from bert_encoder import BertEncoder
+from tabular_encoder import TabularEncoder
+from decoder import Decoder
 
 
 class SARFormer(nn.Module):
-    # Create random tensors to represent latent feature representations from swin_v2 and ALBERT
-    # Note that dim1 is the batch size, dim2 is the sequence length (for ALBERT) and
-    # window_size^2 for swin_v2, and 768 is the hidden dimension size for both models.
-    tensor_swin = torch.randn(64, 100, 768)  # assuming batch size 64, window size 10
-    tensor_albert = torch.randn(
-        64, 200, 768
-    )  # assuming batch size 64, sequence length 200
+    def __init__(self):
+        self.swin_encoder = SwinTransformerV2(img_size=512, patch_size=4, in_chans=4)
+        self.bert_encoder = BertEncoder()
+        self.tabular_encoder = TabularEncoder()
+        self.decoder = Decoder()
 
-    # Concatenate along the second dimension (dim=1)
-    concatenated_tensor = torch.cat((tensor_swin, tensor_albert), dim=1)
+    def forward(self, x):
+        swin_embed = self.swin_encoder(x)  # TODO: fill this in
+        bert_embed = self.bert_encoder(x)
+        tab_embed = self.tabular_encoder(x)
 
-    print(concatenated_tensor.shape)  # Output: torch.Size([64, 300, 768])
+        # Concat along sequence dimension
+        cat_embed = torch.cat((swin_embed, bert_embed, tab_embed), dim=1)
 
-    # We would then input the concatenated tensor into the decoder
+        return self.decoder(cat_embed)
 
 
 def evaluate_model(model, data_loader, criterion, device):
