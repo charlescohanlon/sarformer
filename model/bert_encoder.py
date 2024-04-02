@@ -3,20 +3,16 @@ import torch.nn as nn
 
 
 class BertEncoder(nn.Module):
-    def __init__(self):
-        super(BertEncoder, self).__init__()
+    def __init__(self, d_model, nhead, num_encoder_layers, dim_feedforward, activation):
+        super().__init__()
 
-        # TODO: use word embeddings
-
-        # Parameters taken from Google's BERT implementation at https://arxiv.org/pdf/1810.04805.pdf
-        # (the nn.Transformer module includes sin/cos positional embeddings)
         self.transformer = nn.Transformer(
-            d_model=768,
-            nhead=12,
-            num_encoder_layers=12,
+            d_model=d_model,
+            nhead=nhead,
+            num_encoder_layers=num_encoder_layers,
             num_decoder_layers=0,
-            dim_feedforward=3072,
-            activation="gelu",
+            dim_feedforward=dim_feedforward,
+            activation=activation,
             batch_first=True,
         )
 

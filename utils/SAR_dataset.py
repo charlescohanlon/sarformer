@@ -57,7 +57,8 @@ class SAR_Dataset(Dataset):
             [
                 sample[name]
                 for name in [  # list of tabular feature names
-                    "date",
+                    "start_date",
+                    "start_time",
                     "duration",
                     "temp",
                     "feels_like",

@@ -3,9 +3,7 @@ import torch
 import logging
 
 logger = logging.getLogger(__name__)
-from torch import Tensor
 from torch.utils.data import DataLoader, random_split
-from torchvision import transforms
 import torch
 from SAR_dataset import SAR_Dataset
 

@@ -760,7 +760,7 @@ class SwinTransformerV2(nn.Module):
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
         # self.head = (
-            # nn.Linear(self.num_features, num_classes)
+        # nn.Linear(self.num_features, num_classes)
         #     if num_classes > 0
         #     else nn.Identity()
         # )
