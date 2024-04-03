@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from torch.utils.data import DataLoader
 
 class Decoder(nn.Module):
     def __init__(
-        self, hidden_dim = 768, num_decoder_layers = 12, num_attention_heads = 12, window_size = 8,
-        num_modalities=3, dropout=0.1
+        self, hidden_dim=768, num_decoder_layers=12, num_attention_heads=12, window_size=8,
+        num_modalities=3, dropout=0.1, output_size=512
     ):
         super(Decoder, self).__init__()
         self.hidden_dim = hidden_dim
@@ -15,16 +14,12 @@ class Decoder(nn.Module):
         self.window_size = window_size
         self.num_modalities = num_modalities
         self.dropout = dropout
+        self.output_size = output_size
 
-        # Modality-specific embeddings (just for show)
-        self.modality_embeddings = nn.ModuleList([
-            nn.Embedding(hidden_dim, hidden_dim) for _ in range(num_modalities)
-        ])
-
-        # Positional encoding (just for show)
-        self.positional_encoding = nn.Parameter(
-            torch.randn(window_size * window_size, hidden_dim)
-        )
+        # Modality-specific embeddings
+        # self.modality_embeddings = nn.ModuleList([
+        #     nn.Embedding(hidden_dim, hidden_dim) for _ in range(num_modalities)
+        # ])
 
         # Transformer decoder layers
         decoder_layer = nn.TransformerDecoderLayer(
@@ -35,21 +30,18 @@ class Decoder(nn.Module):
         )
 
         # Output linear layer
-        self.output_linear = nn.Linear(hidden_dim, 1)
+        self.output_linear = nn.Linear(hidden_dim, output_size)
 
         # Layer normalization and dropout
         self.layer_norm = nn.LayerNorm(hidden_dim)
         self.dropout_layer = nn.Dropout(dropout)
 
     def forward(self, concatenated_input, sequence_mask=None):
-        # Modality-specific embeddings
-        modality_embedded_inputs = [
-            embedded(concatenated_input[:, i]) for i, embedded in enumerate(self.modality_embeddings)
-        ]
-        concatenated_input = torch.stack(modality_embedded_inputs, dim=1)
-
-        # Positional encoding
-        concatenated_input += self.positional_encoding
+        # Apply modality-specific embeddings
+        # modality_embedded_inputs = [
+        #     embedding(concatenated_input[:, :, i].long()) for i, embedding in enumerate(self.modality_embeddings)
+        # ]
+        # concatenated_input = torch.stack(modality_embedded_inputs, dim=2)
 
         # Transformer decoder
         transformer_output = self.transformer_decoder(
@@ -66,4 +58,27 @@ class Decoder(nn.Module):
         # Output linear layer
         probability_map = self.output_linear(transformer_output)
 
-        return probability_map.squeeze(2)
+        return probability_map
+
+def generate_square_subsequent_mask(sz):
+    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
+    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
+    return mask
+
+batch_size = 64
+hidden_dim = 768
+text_rep = torch.randn(batch_size, 512, hidden_dim)
+image_rep = torch.randn(batch_size, 2000, hidden_dim)
+tabular_rep = torch.randn(batch_size, 256, hidden_dim)
+
+# Concatenate representations along the last dimension
+concatenated_input = torch.cat((text_rep, image_rep, tabular_rep), dim=1)
+
+print(concatenated_input.shape)
+
+# Initialize Decoder
+decoder = Decoder(hidden_dim=768, num_decoder_layers=12, num_attention_heads=12, window_size=8, num_modalities=3, dropout=0.1, output_size=512)
+
+sequence_mask = generate_square_subsequent_mask(64)
+output = decoder(concatenated_input, sequence_mask)
+print(output.shape)
