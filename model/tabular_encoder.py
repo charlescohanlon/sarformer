@@ -3,40 +3,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class TabularEncoder(nn.Module):
-    def __init__(self, in_dim, out_dim, act_layer=nn.ReLU, dropout_prob=0.0, use_batch_norm=True):
+    def __init__(
+        self, in_dim, out_dim, num_layers=4, layer_dim=None,
+        act_layer=nn.ReLU, dropout_prob=0.0, use_batch_norm=True
+    ):
         super().__init__()
 
         self.layers = nn.ModuleList()
         self.use_batch_norm = use_batch_norm
 
-        # Linearly increases embedding dim from in_dim to out_dim over 4 FFNs
-        l1_dim = in_dim + 1 * ((out_dim - in_dim) // 4)
-        l2_dim = in_dim + 2 * ((out_dim - in_dim) // 4)
-        l3_dim = in_dim + 3 * ((out_dim - in_dim) // 4)
+        # If layer_dim is not provided, linearly increase embedding dim over layers
+        if layer_dim is None:
+            layer_dim = [(in_dim + i * ((out_dim - in_dim) // num_layers)) for i in range(1, num_layers)]
 
         # Add dropout layer
         self.dropout = nn.Dropout(p=dropout_prob)
 
         # Add layers with activation and batch normalization
-        self.layers.append(nn.Linear(in_features=in_dim, out_features=l1_dim))
-        if self.use_batch_norm:
-            self.layers.append(nn.BatchNorm1d(l1_dim)) # Hopefully using population statistics
-        self.layers.append(act_layer())
+        for i in range(num_layers):
+            self.layers.append(nn.Linear(in_features=in_dim if i == 0 else layer_dim[i - 1], out_features=layer_dim[i]))
+            if self.use_batch_norm:
+                self.layers.append(nn.BatchNorm1d(layer_dim[i])) # Hopefully using population statistics
+            self.layers.append(act_layer())
 
-        self.layers.append(nn.Linear(in_features=l1_dim, out_features=l2_dim))
-        if self.use_batch_norm:
-            self.layers.append(nn.BatchNorm1d(l2_dim))
-        self.layers.append(act_layer())
-
-        self.layers.append(nn.Linear(in_features=l2_dim, out_features=l3_dim))
-        if self.use_batch_norm:
-            self.layers.append(nn.BatchNorm1d(l3_dim))
-        self.layers.append(act_layer())
-
-        self.layers.append(nn.Linear(in_features=l3_dim, out_features=out_dim))
-        if self.use_batch_norm:
-            self.layers.append(nn.BatchNorm1d(out_dim))
-        self.layers.append(act_layer())
+        # Add output layer
+        self.layers.append(nn.Linear(in_features=layer_dim[-1], out_features=out_dim))
 
     def forward(self, x):
         for layer in self.layers:
