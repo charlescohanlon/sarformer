@@ -24,7 +24,7 @@ class TabularEncoder(nn.Module):
             self.layers.append(nn.Linear(in_features=in_dim if i == 0 else layer_dim[i - 1], out_features=layer_dim[i]))
             if self.use_batch_norm:
                 self.layers.append(nn.BatchNorm1d(layer_dim[i])) # Hopefully using population statistics
-            self.layers.append(act_layer())
+            self.layers.append(act_layer()) # may want to not include on final layer
 
         # Add output layer
         self.layers.append(nn.Linear(in_features=layer_dim[-1], out_features=out_dim))
