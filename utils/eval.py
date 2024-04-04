@@ -10,6 +10,7 @@ def evaluate_model(model, data_loader, criterion, device):
             inputs = [inp.to(device) for inp in inputs]
             targets = targets.to(device)
             outputs = model(inputs)
+            # outputs = torch.max(outputs, dim=1)
             loss = criterion(outputs, targets)
             total_loss += loss.item() * inputs[0].size(0)
     return total_loss / len(data_loader.dataset)

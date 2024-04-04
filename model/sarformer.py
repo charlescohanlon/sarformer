@@ -3,7 +3,7 @@ import torch.nn as nn
 from swinv2_encoder import SwinTransformerV2
 from bert_encoder import BertEncoder
 from tabular_encoder import TabularEncoder
-from decoder import Decoder
+from model.decoder_transformer import Decoder
 
 
 class SARFormer(nn.Module):
