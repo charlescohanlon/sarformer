@@ -60,10 +60,6 @@ class Decoder(nn.Module):
 
         return probability_map
 
-def generate_square_subsequent_mask(sz):
-    mask = (torch.triu(torch.ones(sz, sz)) == 1).transpose(0, 1)
-    mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))
-    return mask
 
 batch_size = 64
 hidden_dim = 768
@@ -79,6 +75,5 @@ print(concatenated_input.shape)
 # Initialize Decoder
 decoder = Decoder(hidden_dim=768, num_decoder_layers=12, num_attention_heads=12, window_size=8, num_modalities=3, dropout=0.1, output_size=512)
 
-sequence_mask = generate_square_subsequent_mask(64)
-output = decoder(concatenated_input, sequence_mask)
+output = decoder(concatenated_input)
 print(output.shape)
