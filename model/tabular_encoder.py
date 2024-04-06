@@ -10,7 +10,7 @@ class TabularEncoder(nn.Module):
         in_dim,
         out_dim,
         num_layers=4,
-        layer_dim=None,
+        layer_dim=None,  # layer dim needs to include in_dim and out_dim
         act_layer=nn.ReLU,
         dropout_prob=0.0,
         use_batch_norm=True,
@@ -23,7 +23,6 @@ class TabularEncoder(nn.Module):
         # If layer_dim is not provided, linearly increase embedding dim over layers
         if layer_dim is None:
             layer_dim = [
-                # integer division causes issues (not sure why)
                 int(in_dim + i * ((out_dim - in_dim) / num_layers))
                 for i in range(num_layers + 1)
             ]

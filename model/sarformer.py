@@ -7,21 +7,21 @@ from model.decoder_transformer import Decoder
 
 
 class SARFormer(nn.Module):
-    def __init__(self, img_size, dim_embed, num_tab_features, device):
+    def __init__(
+        self, img_size, dim_embed, num_tab_features, mask_proportions={}, device="cuda"
+    ):
         super().__init__()
         torch.set_default_device(device)
+        self.mask_proportions = mask_proportions
         self.swin_encoder = SwinTransformerV2(
-            img_size=img_size, patch_size=4, in_chans=4
+            img_size=img_size,
+            patch_size=4,
+            in_chans=4,
+            mask_proportion=self.mask_proportions["swin"],
         )
 
-        # Parameters taken from Google's BERT implementation at https://arxiv.org/pdf/1810.04805.pdf
-        self.bert_encoder = BertEncoder(
-            d_model=dim_embed,
-            nhead=12,
-            num_encoder_layers=12,
-            dim_feedforward=3072,
-            activation="gelu",
-        )
+        # TODO: what should args be?
+        self.bert_encoder = BertEncoder()
 
         self.tabular_encoder = TabularEncoder(
             num_tab_features,
@@ -36,7 +36,19 @@ class SARFormer(nn.Module):
         bert_embed = self.bert_encoder(text_tensor)
         tab_embed = self.tabular_encoder(tabular_tensor)
 
-        # Concat along sequence dimension
-        cat_embed = torch.cat((swin_embed, bert_embed, tab_embed), dim=1)
+        # if mask proportions specified, forward() returned the masked input with the embeddings
+        if self.mask_proportions:
+            swin_masked, swin_embed = swin_embed
+            bert_masked, bert_embed = bert_embed
+            tab_masked, tab_embed = tab_embed
 
-        return self.decoder(cat_embed)
+        # Concat along sequence dimension
+        cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
+        if self.mask_proportions:
+            cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
+
+            # "embed" is the shrunken embeddings (input to the first attention sublayer)
+            # "masked" is the input with the mask applied (should be input to cross-attention)
+            return self.decoder({"embed": cat_embed, "masked": cat_masked})
+
+        return self.decoder({"embed": cat_embed})

@@ -680,7 +680,6 @@ class SwinTransformerV2(nn.Module):
         img_size=224,
         patch_size=4,
         in_chans=3,
-        # num_classes=1000,
         embed_dim=96,
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 24],
@@ -695,17 +694,18 @@ class SwinTransformerV2(nn.Module):
         patch_norm=True,
         use_checkpoint=False,
         pretrained_window_sizes=[0, 0, 0, 0],
+        mask_proportion=0.0,
         **kwargs,
     ):
         super().__init__()
 
-        # self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
         self.ape = ape
         self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
+        self.masked_proportion = mask_proportion
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -720,7 +720,7 @@ class SwinTransformerV2(nn.Module):
         self.patches_resolution = patches_resolution
 
         # absolute position embedding
-        if self.ape:
+        if self.ape or self.masked_proportion:
             self.absolute_pos_embed = nn.Parameter(
                 torch.zeros(1, num_patches, embed_dim)
             )
@@ -759,11 +759,6 @@ class SwinTransformerV2(nn.Module):
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        # self.head = (
-        # nn.Linear(self.num_features, num_classes)
-        #     if num_classes > 0
-        #     else nn.Identity()
-        # )
 
         self.apply(self._init_weights)
         for bly in self.layers:
@@ -786,29 +781,29 @@ class SwinTransformerV2(nn.Module):
     def no_weight_decay_keywords(self):
         return {"cpb_mlp", "logit_scale", "relative_position_bias_table"}
 
-    def forward_features(self, x):
+    def forward(self, x):
         x = self.patch_embed(x)
-        if self.ape:
+        if self.ape or self.masked_proportion:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
+        if self.masked_proportion:
+            masked_input, x = self.mask(x)
 
         for layer in self.layers:
             x = layer(x)
 
         x = self.norm(x)  # B L C
-        x = self.avgpool(x.transpose(1, 2))  # B C 1
-        x = torch.flatten(x, 1)
-        return x
+        x = self.avgpool(x.tra)
 
-    def forward(self, x):
-        x = self.forward_features(x)
-        # x = self.head(x)
+        if self.masked_proportion:
+            return masked_input, x
+
         return x
 
     def flops(self):
         flops = 0
         flops += self.patch_embed.flops()
-        for i, layer in enumerate(self.layers):
+        for layer in self.layers:
             flops += layer.flops()
         flops += (
             self.num_features
@@ -818,3 +813,6 @@ class SwinTransformerV2(nn.Module):
         )
         flops += self.num_features * self.num_classes
         return flops
+
+    def mask(self, x):
+        pass
