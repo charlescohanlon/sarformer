@@ -47,8 +47,8 @@ class SARFormer(nn.Module):
         if self.mask_proportions:
             cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
 
-            # "embed" is the shrunken embeddings (input to the first attention sublayer)
-            # "masked" is the input with the mask applied (should be input to cross-attention)
+            # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
+            # "masked" is the input with the mask applied (input to the mhsa sublayer)
             return self.decoder({"embed": cat_embed, "masked": cat_masked})
 
         return self.decoder({"embed": cat_embed})
