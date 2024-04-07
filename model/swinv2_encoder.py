@@ -13,6 +13,7 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
+import copy
 
 
 class Mlp(nn.Module):
@@ -184,7 +185,7 @@ class WindowAttention(nn.Module):
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
-        B_, N, C = x.shape
+        B, N, C = x.shape
         qkv_bias = None
         if self.q_bias is not None:
             qkv_bias = torch.cat(
@@ -195,7 +196,7 @@ class WindowAttention(nn.Module):
                 )
             )
         qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
-        qkv = qkv.reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
         q, k, v = (
             qkv[0],
             qkv[1],
@@ -227,7 +228,7 @@ class WindowAttention(nn.Module):
 
         if mask is not None:
             nW = mask.shape[0]
-            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(
+            attn = attn.view(B // nW, nW, self.num_heads, N, N) + mask.unsqueeze(
                 1
             ).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
@@ -237,7 +238,7 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -695,6 +696,7 @@ class SwinTransformerV2(nn.Module):
         use_checkpoint=False,
         pretrained_window_sizes=[0, 0, 0, 0],
         mask_proportion=0.0,
+        mask_token=0,
         **kwargs,
     ):
         super().__init__()
@@ -705,7 +707,8 @@ class SwinTransformerV2(nn.Module):
         self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
-        self.masked_proportion = mask_proportion
+        self.mask_proportion = mask_proportion
+        self.mask_token = mask_token
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -720,7 +723,7 @@ class SwinTransformerV2(nn.Module):
         self.patches_resolution = patches_resolution
 
         # absolute position embedding
-        if self.ape or self.masked_proportion:
+        if self.ape or self.mask_proportion:
             self.absolute_pos_embed = nn.Parameter(
                 torch.zeros(1, num_patches, embed_dim)
             )
@@ -783,10 +786,11 @@ class SwinTransformerV2(nn.Module):
 
     def forward(self, x):
         x = self.patch_embed(x)
-        if self.ape or self.masked_proportion:
+        if self.ape or self.mask_proportion:
+            # TODO: figure out what's going on with this
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
-        if self.masked_proportion:
+        if self.mask_proportion:
             masked_input, x = self.mask(x)
 
         for layer in self.layers:
@@ -795,7 +799,7 @@ class SwinTransformerV2(nn.Module):
         x = self.norm(x)  # B L C
         x = self.avgpool(x.tra)
 
-        if self.masked_proportion:
+        if self.mask_proportion:
             return masked_input, x
 
         return x
@@ -815,4 +819,21 @@ class SwinTransformerV2(nn.Module):
         return flops
 
     def mask(self, x):
-        pass
+        with torch.no_grad():
+            B, P, _ = x.shape  # (batch, num_patches, embed_dim)
+            num_patches_keep = int(P * (1 - self.mask_proportion))
+
+            # efficiently samples uniform distribution (w/ range 0-P) w/o replacement
+            # adapted from https://stackoverflow.com/questions/74204664/pytorch-selecting-n-indices-without-replacement-from-dimension-x
+            mask_indices = torch.sort(
+                torch.randint(P - num_patches_keep, size=(B, num_patches_keep)), axis=1
+            ).values + torch.arange(num_patches_keep)
+
+            batch_indices = torch.arange(x.shape[0]).unsqueeze(1)
+
+            masked_input = x.clone()
+            masked_input[batch_indices, mask_indices, :] = self.mask_token
+
+            x = x[batch_indices, mask_indices, :]
+
+            return masked_input, x

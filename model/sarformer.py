@@ -20,7 +20,6 @@ class SARFormer(nn.Module):
             mask_proportion=self.mask_proportions["swin"],
         )
 
-        # TODO: what should args be?
         self.bert_encoder = BertEncoder()
 
         self.tabular_encoder = TabularEncoder(
