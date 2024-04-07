@@ -44,6 +44,8 @@ class SARFormer(nn.Module):
         # Concat along sequence dimension
         cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
         if self.mask_proportions:
+            # NOTE: swin_masked is (batch, (512 / 4)^2, 96). Likely we'll need to pad the embedding 
+            # dims of tab_masked and bert_masked to concat them
             cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
 
             # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
