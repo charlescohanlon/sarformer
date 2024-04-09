@@ -5,6 +5,7 @@ import torch
 import torch.optim as optim
 from torch import nn
 from typing import Optional
+import mlflow
 
 
 class BertEncoder(nn.Module):
@@ -76,7 +77,7 @@ class BertModel(nn.Module):
             )
         )
 
-    def forward(self, text: Sequence[str]) -> dict:
+    def forward(self, text: Sequence[str]):
         # Tokenize input text
         tokenized = self.tokenizer(
             text,
@@ -89,14 +90,22 @@ class BertModel(nn.Module):
 
         input_ids = tokenized.input_ids
         attention_mask = tokenized.attention_mask
+        x = input_ids
 
         if self.masked_proportion is not None:
-            num_tokens = input_ids.shape[1]
+            num_tokens = attention_mask.shape[1] # needs to be attention mask to avoid masking padded tokens
             num_masked_tokens = int(self.masked_proportion * num_tokens)
             masked_indices = torch.randperm(num_tokens)[:num_masked_tokens]
             input_ids[:, masked_indices] = self.tokenizer.mask_token_id
+            attention_mask[:, masked_indices] = 0
 
-        tokenizer_input = {"input_ids": input_ids, "attention_mask": attention_mask}
+            mask_indices_kept = (input_ids != self.tokenizer.mask_token_id)
+        
+            # Extract non-masked values from input_ids
+            x = input_ids[mask_indices_kept]
+            x = x.view(input_ids.shape[0], -1)
+
+        tokenizer_input = {"input_ids": x, "attention_mask": attention_mask}
 
         bert_embed = self.language_backbone(tokenizer_input)
 
@@ -108,3 +117,4 @@ class BertModel(nn.Module):
             return masked_input, bert_embed
 
         return bert_embed
+    

@@ -14,11 +14,13 @@ class TabularEncoder(nn.Module):
         act_layer=nn.ReLU,
         dropout_prob=0.0,
         use_batch_norm=True,
+        masked_proportion=0
     ):
         super().__init__()
 
         self.layers = nn.ModuleList()
         self.use_batch_norm = use_batch_norm
+        self.masked_proportion = masked_proportion
 
         # If layer_dim is not provided, linearly increase embedding dim over layers
         if layer_dim is None:
@@ -45,7 +47,23 @@ class TabularEncoder(nn.Module):
             self.layers.append(act_layer())  # may want to not include on final layer
 
     def forward(self, x):
+        if self.masked_proportion is not None:
+            masked_input = x.clone()
+            num_columns = x.shape[1]
+            num_masked_columns = int(self.masked_proportion * num_columns)
+            masked_indices = torch.randperm(num_columns)[:num_masked_columns]
+            masked_input[:, masked_indices] = -1 # Replace with masked token
+
+            mask_indices_kept = (masked_input != -1)
+        
+            # Extract non-masked values from input_ids
+            x = masked_input[mask_indices_kept]
+            x = x.view(masked_input.shape[0], -1)
+        
         for layer in self.layers:
             x = layer(x)
         x = self.dropout(x)
+        
+        if self.masking_proportion is not None:
+            return masked_input, x
         return x

@@ -823,15 +823,19 @@ class SwinTransformerV2(nn.Module):
 
             # efficiently samples uniform distribution (w/ range 0-P) w/o replacement
             # adapted from https://stackoverflow.com/questions/74204664/pytorch-selecting-n-indices-without-replacement-from-dimension-x
-            mask_indices = torch.sort(
+            indices_kept = torch.sort(
                 torch.randint(P - num_patches_keep, size=(B, num_patches_keep)), axis=1
             ).values + torch.arange(num_patches_keep)
 
             batch_indices = torch.arange(x.shape[0]).unsqueeze(1)
 
             masked_input = x.clone()
-            masked_input[batch_indices, mask_indices, :] = self.mask_token
+            
+            masked_input.fill_(self.mask_token)
+        
+            # :?
+            masked_input[batch_indices, indices_kept, :] = x[batch_indices, indices_kept, :]
 
-            x = x[batch_indices, mask_indices, :]
+            x = x[batch_indices, indices_kept, :]
 
             return masked_input, x
