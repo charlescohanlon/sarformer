@@ -821,11 +821,11 @@ class SwinTransformerV2(nn.Module):
             B, P, _ = x.shape  # (batch, num_patches, embed_dim)
             num_patches_keep = int(P * (1 - self.mask_proportion))
 
-            indices_kept = torch.stack([torch.randperm(P)[:num_patches_keep] for _ in range(B)], dim=0)
+            indices_kept = torch.stack(
+                [torch.randperm(P)[:num_patches_keep] for _ in range(B)], dim=0
+            )
 
-            masked_input = x.clone()
-
-            masked_input.fill_(self.mask_token)
+            masked_input = torch.full_like(x, fill_value=self.mask_token)
 
             masked_input[:, indices_kept, :] = x[:, indices_kept, :]
 
