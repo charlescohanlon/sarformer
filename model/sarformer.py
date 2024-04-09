@@ -13,6 +13,7 @@ class SARFormer(nn.Module):
         super().__init__()
         torch.set_default_device(device)
         self.mask_proportions = mask_proportions
+        
         self.swin_encoder = SwinTransformerV2(
             img_size=img_size,
             patch_size=4,
