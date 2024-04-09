@@ -819,7 +819,7 @@ class SwinTransformerV2(nn.Module):
     def mask(self, x):
         with torch.no_grad():
             B, P, _ = x.shape  # (batch, num_patches, embed_dim)
-            num_patches_keep = int(P * (1 - self.mask_proportion))
+            num_patches_keep = round(P * (1 - self.mask_proportion))
 
             indices_kept = torch.stack(
                 [torch.randperm(P)[:num_patches_keep] for _ in range(B)], dim=0
