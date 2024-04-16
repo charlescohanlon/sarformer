@@ -24,6 +24,10 @@ class BertEncoder(nn.Module):
     def forward(self, x) -> dict:
         mask = x["attention_mask"]
 
+        # Apply masking logic
+        if self.training:  # Apply masking only during training
+            x["input_ids"], mask = self.mask_input(x["input_ids"], mask)
+
         outputs = self.model(
             input_ids=x["input_ids"],
             attention_mask=mask,
@@ -47,6 +51,16 @@ class BertEncoder(nn.Module):
         results = {"embedded": embedded, "masks": mask, "hidden": encoded_layers[-1]}
         return results
 
+    def mask_input(self, input_ids, mask):
+        with torch.no_grad():
+            num_tokens_keep = int(mask.sum() * (1.0 - self.mask_proportion))
+            indices_to_mask = torch.randperm(input_ids.numel())[:num_tokens_keep]
+            mask_tensor = torch.zeros_like(input_ids, dtype=torch.bool)
+            mask_tensor.view(-1)[indices_to_mask] = True
+            input_ids[mask_tensor] = self.mask_token_id
+            mask[mask_tensor] = 0  # Set corresponding attention_mask to 0 for masked tokens
+        return input_ids, mask
+
 
 class BertModel(nn.Module):
     """
@@ -62,10 +76,14 @@ class BertModel(nn.Module):
         max_tokens: int = 256,
         add_pooling_layer: bool = False,
         num_layers_of_embedded: int = 12,
+        mask_proportion: float = 0.15,
+        mask_token_id: int = 103,
     ):
 
         super().__init__()
         self.max_tokens = max_tokens
+        self.mask_proportion = mask_proportion
+        self.mask_token_id = mask_token_id
 
         print(add_pooling_layer)
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
@@ -86,12 +104,10 @@ class BertModel(nn.Module):
     def forward(self, text: Sequence[str]) -> dict:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # https://huggingface.co/docs/transformers/v4.39.3/en/internal/tokenization_utils#transformers.PreTrainedTokenizerBase.batch_encode_plus
         tokenized = self.tokenizer(
             text,
             max_length=self.max_tokens,
             padding="longest",
-            return_special_tokens_mask=True,
             return_tensors="pt",
             truncation=True,
         ).to(device)
@@ -105,14 +121,10 @@ class BertModel(nn.Module):
         return language_dict_features
 
 
-# Initialize the model
 bert_model = BertModel()
 
-# Define input text
 text = ["This is a sample sentence.", "Another example sentence."]
 
-# Perform forward pass
 output = bert_model(text)
 
-# Print the embedded features
 print(output["embedded"])
