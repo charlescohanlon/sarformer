@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from swinv2_encoder import SwinTransformerV2
-from bert_encoder import BertEncoder
+from bert_encoder import BertModel
 from tabular_encoder import TabularEncoder
 from model.decoder_transformer import Decoder
 
@@ -21,12 +21,17 @@ class SARFormer(nn.Module):
             mask_proportion=self.mask_proportions["swin"],
         )
 
-        self.bert_encoder = BertEncoder()
+        self.bert_eancoder = BertModel(
+            num_layers_of_embedded=12,
+            max_tokens=256,
+            mask_proportion=self.mask_proportions["bert"]
+        )
 
         self.tabular_encoder = TabularEncoder(
             num_tab_features,
             dim_embed,
             act_layer=nn.ReLU,
+            masked_proportion=self.mask_proportions["tabular"]
         )
 
         self.decoder = Decoder()
@@ -54,3 +59,5 @@ class SARFormer(nn.Module):
             return self.decoder({"embed": cat_embed, "masked": cat_masked})
 
         return self.decoder({"embed": cat_embed})
+
+test = SARFormer(512, 512, 10, {"swin":0.5,"bert":0.5,"tabular":0.5})

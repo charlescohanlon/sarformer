@@ -2,90 +2,65 @@ from collections import OrderedDict
 from typing import Sequence
 from transformers import AutoTokenizer, BertConfig, BertModel as TransformersBertModel
 import torch
+import torch.optim as optim
 from torch import nn
+from typing import Optional
+import mlflow
 
 
 class BertEncoder(nn.Module):
     """
-    add_pooling_layer (bool): whether to add a pooling layer.
-    num_layers_of_embedded (int): number of layers of the embedded model (defaults to 12)
+    embedding_layers (int): number of embedding layers (defaults to 12)
     """
 
     def __init__(
-        self, add_pooling_layer: bool = False, num_layers_of_embedded: int = 12
+        self, embedding_layers: int = 12
     ):
         super().__init__()
         config = BertConfig.from_pretrained("bert-base-cased")
 
         self.model = TransformersBertModel.from_pretrained("bert-base-cased")
         self.hidden_size = config.hidden_size  # should be 768
-        self.num_layers_of_embedded = num_layers_of_embedded
+        self.embedding_layers = embedding_layers
 
     def forward(self, x) -> dict:
-        mask = x["attention_mask"]
-
-        # Apply masking logic
-        if self.training:  # Apply masking only during training
-            x["input_ids"], mask = self.mask_input(x["input_ids"], mask)
-
         outputs = self.model(
             input_ids=x["input_ids"],
-            attention_mask=mask,
             output_hidden_states=True,
         )
 
         # outputs has 13 layers, 1 input layer and 12 hidden layers
         encoded_layers = outputs.hidden_states[1:]
 
-        features = torch.stack(encoded_layers[-self.num_layers_of_embedded :], 1).mean(
+        features = torch.stack(encoded_layers[-self.embedding_layers :], 1).mean(
             1
         )
-
-        features = features / self.num_layers_of_embedded
-
-        if mask.dim() == 2:
-            embedded = features * mask.unsqueeze(-1).float()
-        else:
-            embedded = features
-
-        results = {"embedded": embedded, "masks": mask, "hidden": encoded_layers[-1]}
-        return results
-
-    def mask_input(self, input_ids, mask):
-        with torch.no_grad():
-            num_tokens_keep = int(mask.sum() * (1.0 - self.mask_proportion))
-            indices_to_mask = torch.randperm(input_ids.numel())[:num_tokens_keep]
-            mask_tensor = torch.zeros_like(input_ids, dtype=torch.bool)
-            mask_tensor.view(-1)[indices_to_mask] = True
-            input_ids[mask_tensor] = self.mask_token_id
-            mask[mask_tensor] = 0  # Set corresponding attention_mask to 0 for masked tokens
-        return input_ids, mask
+        features = features / self.embedding_layers
+        return features
 
 
 class BertModel(nn.Module):
     """
     max_tokens (int): maximum number of tokens to be used for BERT (defaults to 256)
-    add_pooling_layer (bool): whether to adding pooling layer
-                              in bert encoder (defaults to False)
-    num_layers_of_embedded (int): number of layers of the embedded model
-                                  (defaults to 12)
+    embedding_layers (int): number of embedding layers (defaults to 12)
+    masked_proportion (float): proportion of input to be masked
     """
 
     def __init__(
         self,
         max_tokens: int = 256,
-        add_pooling_layer: bool = False,
-        num_layers_of_embedded: int = 12,
-        mask_proportion: float = 0.15,
-        mask_token_id: int = 103,
+        embedding_layers: int = 12,
+        masked_proportion: Optional[float] = 0
     ):
 
         super().__init__()
         self.max_tokens = max_tokens
-        self.mask_proportion = mask_proportion
-        self.mask_token_id = mask_token_id
+        self.masked_proportion = masked_proportion
+        self.embedding_layers = embedding_layers
 
-        print(add_pooling_layer)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        torch.set_default_device(device)
+
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
         self.language_backbone = nn.Sequential(
             OrderedDict(
@@ -93,33 +68,54 @@ class BertModel(nn.Module):
                     (
                         "body",
                         BertEncoder(
-                            "bert-base-cased",
-                            num_layers_of_embedded=num_layers_of_embedded,
+                            embedding_layers=embedding_layers,
                         ),
                     )
                 ]
             )
         )
 
-    def forward(self, text: Sequence[str]) -> dict:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+    def forward(self, text: Sequence[str]):
+        # Tokenize input text
         tokenized = self.tokenizer(
             text,
             max_length=self.max_tokens,
             padding="longest",
+            return_special_tokens_mask=True,
             return_tensors="pt",
             truncation=True,
-        ).to(device)
+        )
 
         input_ids = tokenized.input_ids
         attention_mask = tokenized.attention_mask
+        x = input_ids
 
-        tokenizer_input = {"input_ids": input_ids, "attention_mask": attention_mask}
+        if self.masked_proportion is not None:
+            num_tokens = attention_mask.shape[1] # needs to be attention mask to avoid masking padded tokens
+            num_masked_tokens = int(self.masked_proportion * num_tokens)
+            masked_indices = torch.randperm(num_tokens)[:num_masked_tokens]
+            input_ids[:, masked_indices] = self.tokenizer.mask_token_id
+            attention_mask[:, masked_indices] = 0
 
-        language_dict_features = self.language_backbone(tokenizer_input)
-        return language_dict_features
+            mask_indices_kept = (input_ids != self.tokenizer.mask_token_id)
+        
+            # Extract non-masked values from input_ids
+            x = input_ids[mask_indices_kept]
+            x = x.view(input_ids.shape[0], -1)
 
+        tokenizer_input = {"input_ids": x, "attention_mask": attention_mask}
+
+        bert_embed = self.language_backbone(tokenizer_input)
+
+        if self.masked_proportion is not None:
+            masked_input = input_ids.clone()
+
+            masked_input[:, masked_indices] = self.tokenizer.mask_token_id
+
+            return masked_input, bert_embed
+
+        return bert_embed
+    
 
 bert_model = BertModel()
 
@@ -127,4 +123,12 @@ text = ["This is a sample sentence.", "Another example sentence."]
 
 output = bert_model(text)
 
-print(output["embedded"])
+print(output)
+
+bert_model = BertModel(masked_proportion=0.5)
+
+text = ["This is a sample sentence.", "Another example sentence."]
+
+output = bert_model(text)
+
+print(output)
