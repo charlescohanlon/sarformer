@@ -1,16 +1,18 @@
 import torch
 import torch.nn as nn
 from swinv2_encoder import SwinTransformerV2
-from bert_encoder import BertModel
+from bert_encoder import BertEncoder
 from tabular_encoder import TabularEncoder
-from model.decoder_transformer import Decoder
+from decoder_test import Decoder
+#from decoder_transformer import Decoder
 
 
 class SARFormer(nn.Module):
     def __init__(
-        self, img_size, dim_embed, num_tab_features, mask_proportions={}, device="cuda"
+        self, img_size, dim_embed, num_tab_features, mask_proportions={}
     ):
         super().__init__()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(device)
         self.mask_proportions = mask_proportions
         
@@ -21,8 +23,8 @@ class SARFormer(nn.Module):
             mask_proportion=self.mask_proportions["swin"],
         )
 
-        self.bert_eancoder = BertModel(
-            num_layers_of_embedded=12,
+        self.bert_encoder = BertEncoder(
+            embedding_layers=12,
             max_tokens=256,
             mask_proportion=self.mask_proportions["bert"]
         )
@@ -31,7 +33,8 @@ class SARFormer(nn.Module):
             num_tab_features,
             dim_embed,
             act_layer=nn.ReLU,
-            masked_proportion=self.mask_proportions["tabular"]
+            mask_proportion=self.mask_proportions["tabular"],
+            use_batch_norm=False
         )
 
         self.decoder = Decoder()
@@ -52,12 +55,11 @@ class SARFormer(nn.Module):
         if self.mask_proportions:
             # NOTE: swin_masked is (batch, (512 / 4)^2, 96). We'll need to pad the embedding 
             # dims of tab_masked and bert_masked to concat them
-            cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
+            cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=2)
 
             # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
             # "masked" is the input with the mask applied (input to the mhsa sublayer)
-            return self.decoder({"embed": cat_embed, "masked": cat_masked})
+            return self.decoder(input_dim = (tab_embed.size(1) + swin_embed.size(1) + bert_embed.size(1)), inputs = {"embed": cat_embed, "masked": cat_masked})
 
         return self.decoder({"embed": cat_embed})
 
-test = SARFormer(512, 512, 10, {"swin":0.5,"bert":0.5,"tabular":0.5})
