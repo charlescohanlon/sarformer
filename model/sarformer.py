@@ -13,7 +13,7 @@ class SARFormer(nn.Module):
         super().__init__()
         torch.set_default_device(device)
         self.mask_proportions = mask_proportions
-        
+
         self.swin_encoder = SwinTransformerV2(
             img_size=img_size,
             patch_size=4,
@@ -45,7 +45,7 @@ class SARFormer(nn.Module):
         # Concat along sequence dimension
         cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
         if self.mask_proportions:
-            # NOTE: swin_masked is (batch, (512 / 4)^2, 96). We'll need to pad the embedding 
+            # NOTE: swin_masked is (batch, (512 / 4)^2, 96). We'll need to pad the embedding
             # dims of tab_masked and bert_masked to concat them
             cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
 
