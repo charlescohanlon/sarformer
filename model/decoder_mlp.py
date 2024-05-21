@@ -50,16 +50,16 @@ class SegmentationDecoder(nn.Module):
 
         return output
 
-text_latent_size = 256  
-image_latent_size = 512 
-output_size = 10
-hidden_sizes = [768, 768] 
+# text_latent_size = 256  
+# image_latent_size = 512 
+# output_size = 10
+# hidden_sizes = [768, 768] 
 
-decoder = SegmentationDecoder(text_latent_size, image_latent_size, output_size, hidden_sizes, activation=nn.Softmax(dim=1))
+# decoder = SegmentationDecoder(text_latent_size, image_latent_size, output_size, hidden_sizes, activation=nn.Softmax(dim=1))
 
-text_latent = torch.randn(1, text_latent_size)  # Example text latent vector
-image_latent = torch.randn(1, image_latent_size)  # Example image latent vector
+# text_latent = torch.randn(1, text_latent_size)  # Example text latent vector
+# image_latent = torch.randn(1, image_latent_size)  # Example image latent vector
 
-output = decoder(text_latent, image_latent)
-print("Segmentation output shape:", output.shape)
-print(output)
+# output = decoder(text_latent, image_latent)
+# print("Segmentation output shape:", output.shape)
+# print(output)

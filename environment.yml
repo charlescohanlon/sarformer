@@ -1,8 +1,8 @@
-name: DL4SAR
+name: DL4SAR_2
 channels:
   - defaults
 dependencies:
-  - python=3.8
+  - python=3.10
   - cmake=3.22.1
   - boost=1.73
   - notebook=6.5.4

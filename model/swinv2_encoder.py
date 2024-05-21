@@ -682,7 +682,7 @@ class SwinTransformerV2(nn.Module):
         embed_dim=96,
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 24],
-        window_size=7,
+        window_size=8,
         mlp_ratio=4.0,
         qkv_bias=True,
         drop_rate=0.0,
@@ -716,14 +716,15 @@ class SwinTransformerV2(nn.Module):
             embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None,
         )
-        num_patches = self.patch_embed.num_patches
+        self.patch_size = patch_size
+        self.num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
 
         # absolute position embedding
         if self.ape or self.mask_proportion:
             self.absolute_pos_embed = nn.Parameter(
-                torch.zeros(1, num_patches, embed_dim)
+                torch.zeros(1, self.num_patches, embed_dim)
             )
             trunc_normal_(self.absolute_pos_embed, std=0.02)
 
@@ -783,13 +784,13 @@ class SwinTransformerV2(nn.Module):
         return {"cpb_mlp", "logit_scale", "relative_position_bias_table"}
 
     def forward(self, x):
+        if self.mask_proportion:
+            masked_input, x = self.mask(x)
         x = self.patch_embed(x)
         if self.ape or self.mask_proportion:
             # TODO: figure out what's going on with this
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
-        if self.mask_proportion:
-            masked_input, x = self.mask(x)
 
         for layer in self.layers:
             x = layer(x)
@@ -816,19 +817,54 @@ class SwinTransformerV2(nn.Module):
         flops += self.num_features * self.num_classes
         return flops
 
-    def mask(self, x):
-        with torch.no_grad():
-            B, P, _ = x.shape  # (batch, num_patches, embed_dim)
-            num_patches_keep = round(P * (1 - self.mask_proportion))
+    def mask(self, x):  # this would go before the projection
+        # with torch.no_grad():
+        B, _, H, W = x.shape
 
-            indices_kept = torch.stack(
-                [torch.randperm(P)[:num_patches_keep] for _ in range(B)], dim=0
+        num_fully_masked = round(self.num_patches * self.mask_proportion**2)
+
+        # maintains the overall proportion of pixels masked within the image
+        num_partial_masked = round(
+            self.num_patches
+            * self.mask_proportion
+            * (1 - self.mask_proportion)
+            * (1 / self.mask_proportion)
+        )
+
+        mask = torch.ones(B, H, W, dtype=torch.bool)
+
+        def sample(num_total, num_keep):
+            return torch.randperm(num_total)[:num_keep]
+
+        total_masked = num_fully_masked + num_partial_masked
+
+        # may not want to use loops here
+        rows = (
+            torch.stack(
+                [sample(self.patches_resolution[0], total_masked) for _ in range(B)]
             )
+            * self.patch_size
+        )
 
-            masked_input = torch.full_like(x, fill_value=self.mask_token)
+        cols = (
+            torch.stack(
+                [sample(self.patches_resolution[1], total_masked) for _ in range(B)]
+            )
+            * self.patch_size
+        )
 
-            masked_input[:, indices_kept, :] = x[:, indices_kept, :]
+        # mask[] = False
 
-            x = x[:, indices_kept, :]
+        mask.unsqueeze(1)  # add channel dim
+        x[mask] = self.mask_token
 
-            return masked_input, x
+
+        # fully masked patches are replaced w/ 0 using slices (e.g., [index : index + patch_size])
+        # partially masked patches choose random between [index, index + patch_size] to replace w/ 0
+        # send this through the projection (and use this as the decoder input)
+
+        # after the projection:
+        # avgpool the mask with a kernal and stride of patch size and flatten equivalent to projection
+        # then ceil() the mask and
+        # convert to boolean to remove only fully masked patches
+        # use this projected mask to remove the equivalent vectors in the input volume

@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from math import ceil
-
 
 class TabularEncoder(nn.Module):
     def __init__(
@@ -10,17 +8,18 @@ class TabularEncoder(nn.Module):
         in_dim,
         out_dim,
         num_layers=4,
-        layer_dim=None,  # layer dim needs to include in_dim and out_dim
+        layer_dim=None,
         act_layer=nn.ReLU,
         dropout_prob=0.0,
         use_batch_norm=True,
-        masked_proportion=0
+        mask_proportion=0,
+        reshape_dim=None
     ):
         super().__init__()
 
         self.layers = nn.ModuleList()
         self.use_batch_norm = use_batch_norm
-        self.masked_proportion = masked_proportion
+        self.masked_proportion = mask_proportion
 
         # If layer_dim is not provided, linearly increase embedding dim over layers
         if layer_dim is None:
@@ -41,29 +40,33 @@ class TabularEncoder(nn.Module):
                 )
             )
             if self.use_batch_norm:
-                # Hopefully using population statistics
-                self.layers.append(nn.BatchNorm1d(layer_dim[i]))
+                self.layers.append(nn.BatchNorm1d(layer_dim[i + 1]))
 
-            self.layers.append(act_layer())  # may want to not include on final layer
+            self.layers.append(act_layer())
+
+        self.reshape_dim = reshape_dim
 
     def forward(self, x):
+        #self.eval()
+        mask = None
         if self.masked_proportion is not None:
-            masked_input = x.clone()
             num_columns = x.shape[1]
             num_masked_columns = int(self.masked_proportion * num_columns)
-            masked_indices = torch.randperm(num_columns)[:num_masked_columns]
-            masked_input[:, masked_indices] = -1 # Replace with masked token
+            mask = torch.ones_like(x)
+            mask[:, torch.randperm(num_columns)[:num_masked_columns]] = 0
 
-            mask_indices_kept = (masked_input != -1)
-        
-            # Extract non-masked values from input_ids
-            x = masked_input[mask_indices_kept]
-            x = x.view(masked_input.shape[0], -1)
-        
         for layer in self.layers:
             x = layer(x)
+
         x = self.dropout(x)
         
-        if self.masking_proportion is not None:
-            return masked_input, x
+        if self.reshape_dim is not None:
+            batch_size = x.size(0)
+            something = x.size(1)
+            hidden_dim = x.size(2)
+            x = x.view(batch_size, something, hidden_dim)
+        
+        if self.masked_proportion is not None:
+            return mask.unsqueeze(1), x.unsqueeze(1)
         return x
+

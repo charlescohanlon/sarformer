@@ -78,7 +78,7 @@ tabular_rep = torch.randn(batch_size, 256, hidden_dim)
 # Concatenate representations along the last dimension
 concatenated_input = torch.cat((text_rep, image_rep, tabular_rep), dim=1)
 
-print(concatenated_input.shape)
+# print(concatenated_input.shape)
 
 # Initialize Decoder
 decoder = Decoder(
