@@ -4,12 +4,18 @@ from swinv2_encoder import SwinTransformerV2
 from bert_encoder import BertEncoder
 from tabular_encoder import TabularEncoder
 from decoder_test import Decoder
-#from decoder_transformer import Decoder
+
+# from decoder_transformer import Decoder
 
 
 class SARFormer(nn.Module):
     def __init__(
-        self, img_size, dim_embed, num_tab_features, mask_proportions={}
+        self,
+        dim_embed,
+        num_tab_features,
+        img_size=512,
+        text_max_seq_len=1024,
+        mask_proportions={},
     ):
         super().__init__()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -25,8 +31,8 @@ class SARFormer(nn.Module):
 
         self.bert_encoder = BertEncoder(
             embedding_layers=12,
-            max_tokens=256,
-            mask_proportion=self.mask_proportions["bert"]
+            max_tokens=text_max_seq_len,
+            mask_proportion=self.mask_proportions["bert"],
         )
 
         self.tabular_encoder = TabularEncoder(
@@ -34,7 +40,7 @@ class SARFormer(nn.Module):
             dim_embed,
             act_layer=nn.ReLU,
             mask_proportion=self.mask_proportions["tabular"],
-            use_batch_norm=False
+            use_batch_norm=False,
         )
 
         self.decoder = Decoder()
@@ -59,7 +65,9 @@ class SARFormer(nn.Module):
 
             # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
             # "masked" is the input with the mask applied (input to the mhsa sublayer)
-            return self.decoder(input_dim = (tab_embed.size(1) + swin_embed.size(1) + bert_embed.size(1)), inputs = {"embed": cat_embed, "masked": cat_masked})
+            return self.decoder(
+                input_dim=(tab_embed.size(1) + swin_embed.size(1) + bert_embed.size(1)),
+                inputs={"embed": cat_embed, "masked": cat_masked},
+            )
 
         return self.decoder({"embed": cat_embed})
-
