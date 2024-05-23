@@ -1,35 +1,40 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
 
 class Decoder(nn.Module):
-    def __init__(self, input_dim = 539, num_heads = 12, num_layers = 1, hidden_dim = 804, output_dim = 512):
+    def __init__(self, num_heads=1, num_layers=1, hidden_dim=2075, d_model=91):
         super().__init__()
         self.hidden_dim = hidden_dim
-        # self.input_proj = nn.Linear(input_dim, hidden_dim)
-        self.transformer_decoder_layer = nn.TransformerDecoderLayer(d_model=hidden_dim,
+        self.d_model = d_model
+        self.transformer_decoder_layer = nn.TransformerDecoderLayer(d_model=d_model,
                                                                      nhead=num_heads,
-                                                                     dim_feedforward=hidden_dim * 4)
+                                                                     dim_feedforward=hidden_dim)
         self.transformer_decoder = nn.TransformerDecoder(self.transformer_decoder_layer, num_layers=num_layers)
-        
-        self.output_proj1 = nn.Linear(hidden_dim, output_dim)  # Project to the output dimension
-        self.output_proj2 = nn.Linear(input_dim, output_dim)  # Project to the output dimension
+        self.input_proj_embed = nn.Linear(91, d_model)
+        self.input_proj_masked = nn.Linear(2075, d_model)
 
-    def forward(self, input_dim, inputs):
+    def forward(self, inputs):
         embed, masked = inputs["embed"], inputs["masked"]
+        embed = embed.permute(0, 2, 1)
+        masked = masked.permute(0, 2, 1)
+        tgt = self.input_proj_embed(embed)  # Project embed to d_model dimension
+        memory = self.input_proj_masked(masked)  # Project masked to d_model dimension
         
-        embed = nn.Linear(embed.size(2), self.hidden_dim)(embed)
+        print(tgt.size())  # Expected size: (batch_size, seq_len, d_model)
+        print(memory.size())  # Expected size: (batch_size, seq_len, d_model)
         
-        # Using embed for target and masked for memory for cross-attention in the decoder
-        tgt = embed.permute(1, 0, 2)  # Sequence length, Batch size, Embedding dim
-        memory = masked.permute(1, 0, 2)
-        
-        # might need positional encodings here
         output = self.transformer_decoder(tgt, memory)
-        # may need to add in tgt_mask=sequence_mask and memory_mask=sequence_mask, but this
-        # was causing me problems so I removed it for now
-        output = self.output_proj1(output.permute(1, 0, 2))
-        output = self.output_proj2(output.permute(0, 2, 1))
-        # Somehow need to convert to probability map
+        
+        print(output.size())  # Expected output size: (seq_len, batch_size, d_model)
         return output
+
+# Example usage:
+"""
+decoder = Decoder()
+inputs = {
+    "embed": torch.randn(768, 1, 91),  # (seq_len, batch_size, embed_dim)
+    "masked": torch.randn(768, 1, 2075)    # (seq_len, batch_size, masked_dim)
+}
+output = decoder(inputs)
+print(output)
+"""

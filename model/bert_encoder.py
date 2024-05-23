@@ -103,7 +103,8 @@ class BertEncoder(nn.Module):
         bert_embed = self.language_backbone(tokenizer_input)
 
         if self.masked_proportion is not None:
-            return masked_input.unsqueeze(1), bert_embed
+            #return masked_input.unsqueeze(1), bert_embed
+            return bert_embed, bert_embed
 
         return bert_embed
 

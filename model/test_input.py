@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 import rasterio
 from sarformer import SARFormer
+import torch.nn.functional as F
 
 model = SARFormer(512, 768, 10, {"swin":0.5,"bert":0.5,"tabular":0.5})
 
@@ -47,8 +48,8 @@ if model.mask_proportions:
     tab_masked, tab_embed = tab_embed
 
 # Fake for now
-swin_masked = torch.randn(1, 1, 768)
-swin_embed = torch.randn(1, 512, 768)
+swin_masked = torch.randn(1, 2048, 768)
+swin_embed = torch.randn(1, 64, 768)
 
 
 # copied from sarformer
@@ -56,12 +57,14 @@ cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
 if model.mask_proportions:
     # NOTE: swin_masked is (batch, (512 / 4)^2, 96). We'll need to pad the embedding 
     # dims of tab_masked and bert_masked to concat them
-    cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=2)
+    bert_masked = F.pad(bert_masked, (0, 768 - bert_masked.size(2)))
+    tab_masked = F.pad(tab_masked, (0, 768 - tab_masked.size(2)))
+
+    cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
 
     # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
     # "masked" is the input with the mask applied (input to the mhsa sublayer)
-    output = model.decoder(input_dim = (tab_embed.size(1) + swin_embed.size(1) + bert_embed.size(1)), \
-                           inputs = {"embed": cat_embed, "masked": cat_masked})
+    output = model.decoder(inputs = {"embed": cat_embed, "masked": cat_masked})
 
 else:
     output = model.decoder(input_dim = 0, inputs = {"embed": cat_embed})

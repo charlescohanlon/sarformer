@@ -51,6 +51,7 @@ class Decoder(nn.Module):
         # concatenated_input = torch.stack(modality_embedded_inputs, dim=2)
 
         # TODO: check if "masked" in x which is a dictionary
+        
         # Transformer decoder
         transformer_output = self.transformer_decoder(
             tgt=concatenated_input,
