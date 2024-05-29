@@ -3,17 +3,15 @@ import torch.nn as nn
 from swinv2_encoder import SwinTransformerV2
 from bert_encoder import BertEncoder
 from tabular_encoder import TabularEncoder
-from decoder_test import Decoder
-
-# from decoder_transformer import Decoder
+from decoder_transformer import Decoder
 
 
 class SARFormer(nn.Module):
     def __init__(
         self,
-        dim_embed,
-        num_tab_features,
         img_size=512,
+        dim_embed=768,
+        num_tab_features=10,
         text_max_seq_len=1024,
         mask_proportions={},
     ):
@@ -66,8 +64,7 @@ class SARFormer(nn.Module):
             # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
             # "masked" is the input with the mask applied (input to the mhsa sublayer)
             return self.decoder(
-                input_dim=(tab_embed.size(1) + swin_embed.size(1) + bert_embed.size(1)),
-                inputs={"embed": cat_embed, "masked": cat_masked},
+                inputs={"embed": cat_embed, "masked": cat_masked}
             )
 
         return self.decoder({"embed": cat_embed})

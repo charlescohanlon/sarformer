@@ -1,96 +1,40 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
-
 
 class Decoder(nn.Module):
-    def __init__(
-        self,
-        hidden_dim=768,
-        num_decoder_layers=12,
-        num_attention_heads=12,
-        window_size=8,
-        num_modalities=3,
-        dropout=0.1,
-        output_size=512,
-    ):
+    def __init__(self, num_heads=1, num_layers=1, hidden_dim=2075, d_model=91):
         super().__init__()
         self.hidden_dim = hidden_dim
-        self.num_decoder_layers = num_decoder_layers
-        self.num_attention_heads = num_attention_heads
-        self.window_size = window_size
-        self.num_modalities = num_modalities
-        self.dropout = dropout
-        self.output_size = output_size
+        self.d_model = d_model
+        self.transformer_decoder_layer = nn.TransformerDecoderLayer(d_model=d_model,
+                                                                     nhead=num_heads,
+                                                                     dim_feedforward=hidden_dim)
+        self.transformer_decoder = nn.TransformerDecoder(self.transformer_decoder_layer, num_layers=num_layers)
+        self.input_proj_embed = nn.Linear(91, d_model)
+        self.input_proj_masked = nn.Linear(2075, d_model)
 
-        # Modality-specific embeddings
-        # self.modality_embeddings = nn.ModuleList([
-        #     nn.Embedding(hidden_dim, hidden_dim) for _ in range(num_modalities)
-        # ])
-
-        # Transformer decoder layers
-        decoder_layer = nn.TransformerDecoderLayer(
-            d_model=hidden_dim, nhead=num_attention_heads
-        )
-        self.transformer_decoder = nn.TransformerDecoder(
-            decoder_layer=decoder_layer, num_layers=num_decoder_layers
-        )
-
-        # Output linear layer
-        self.output_linear = nn.Linear(hidden_dim, output_size)
-
-        # Layer normalization and dropout
-        self.layer_norm = nn.LayerNorm(hidden_dim)
-        self.dropout_layer = nn.Dropout(dropout)
-
-    def forward(self, x: dict):
-        # Apply modality-specific embeddings
-        # modality_embedded_inputs = [
-        #     embedding(concatenated_input[:, :, i].long()) for i, embedding in enumerate(self.modality_embeddings)
-        # ]
-        # concatenated_input = torch.stack(modality_embedded_inputs, dim=2)
-
-        # TODO: check if "masked" in x which is a dictionary
+    def forward(self, inputs):
+        embed, masked = inputs["embed"], inputs["masked"]
+        embed = embed.permute(0, 2, 1)
+        masked = masked.permute(0, 2, 1)
+        tgt = self.input_proj_embed(embed)  # Project embed to d_model dimension
+        memory = self.input_proj_masked(masked)  # Project masked to d_model dimension
         
-        # Transformer decoder
-        transformer_output = self.transformer_decoder(
-            tgt=concatenated_input,
-            memory=concatenated_input,
-            tgt_mask=sequence_mask,
-            memory_mask=sequence_mask,
-        )
+        print(tgt.size())  # Expected size: (batch_size, seq_len, d_model)
+        print(memory.size())  # Expected size: (batch_size, seq_len, d_model)
+        
+        output = self.transformer_decoder(tgt, memory)
+        
+        print(output.size())  # Expected output size: (seq_len, batch_size, d_model)
+        return output
 
-        # Apply layer normalization and dropout
-        transformer_output = self.layer_norm(transformer_output)
-        transformer_output = self.dropout_layer(transformer_output)
-
-        # Output linear layer
-        probability_map = self.output_linear(transformer_output)
-
-        return probability_map
-
-
-batch_size = 64
-hidden_dim = 768
-text_rep = torch.randn(batch_size, 512, hidden_dim)
-image_rep = torch.randn(batch_size, 2000, hidden_dim)
-tabular_rep = torch.randn(batch_size, 256, hidden_dim)
-
-# Concatenate representations along the last dimension
-concatenated_input = torch.cat((text_rep, image_rep, tabular_rep), dim=1)
-
-# print(concatenated_input.shape)
-
-# Initialize Decoder
-decoder = Decoder(
-    hidden_dim=768,
-    num_decoder_layers=12,
-    num_attention_heads=12,
-    window_size=8,
-    num_modalities=3,
-    dropout=0.1,
-    output_size=512,
-)
-
-output = decoder(concatenated_input)
-print(output.shape)
+# Example usage:
+"""
+decoder = Decoder()
+inputs = {
+    "embed": torch.randn(768, 1, 91),  # (seq_len, batch_size, embed_dim)
+    "masked": torch.randn(768, 1, 2075)    # (seq_len, batch_size, masked_dim)
+}
+output = decoder(inputs)
+print(output)
+"""

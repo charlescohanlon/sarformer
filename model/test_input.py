@@ -5,7 +5,7 @@ import rasterio
 from sarformer import SARFormer
 import torch.nn.functional as F
 
-model = SARFormer(512, 768, 10, {"swin":0.5,"bert":0.5,"tabular":0.5})
+model = SARFormer(512, 768, mask_proportions={"swin":0.5,"bert":0.5,"tabular":0.5})
 
 def load_and_preprocess_images(dem_path, naip_path):
     with rasterio.open(dem_path) as dem_file:
@@ -28,8 +28,8 @@ def load_and_preprocess_images(dem_path, naip_path):
     # 1 x 4 x 512 x 512
     return combined_img
 
-image_tensor = load_and_preprocess_images(r'C:\Users\camer\OneDrive\Documents\AI4SAR\DL4SAR\loaders\TestInputs\DEM_643554.tif', \
-                                          r'C:\Users\camer\OneDrive\Documents\AI4SAR\DL4SAR\loaders\TestInputs\NAIP_643554.tif')
+#image_tensor = load_and_preprocess_images(r'C:\Users\camer\OneDrive\Documents\AI4SAR\DL4SAR\loaders\TestInputs\DEM_643554.tif', \
+#                                          r'C:\Users\camer\OneDrive\Documents\AI4SAR\DL4SAR\loaders\TestInputs\NAIP_643554.tif')
 
 text = [
     "A scent of sagebrush and earth: I find a faint scent of sagebrush and earth in the air...",
@@ -52,7 +52,6 @@ swin_masked = torch.randn(1, 2048, 768)
 swin_embed = torch.randn(1, 64, 768)
 
 
-# copied from sarformer
 cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
 if model.mask_proportions:
     # NOTE: swin_masked is (batch, (512 / 4)^2, 96). We'll need to pad the embedding 

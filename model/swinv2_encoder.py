@@ -796,7 +796,7 @@ class SwinTransformerV2(nn.Module):
             x = layer(x)
 
         x = self.norm(x)  # B L C
-        x = self.avgpool(x.tra)
+        x = self.avgpool(x.transpose(1, 2))
 
         if self.mask_proportion:
             return masked_input, x
@@ -819,44 +819,16 @@ class SwinTransformerV2(nn.Module):
 
     def mask(self, x):  # this would go before the projection
         # with torch.no_grad():
-        B, _, H, W = x.shape
-
-        num_fully_masked = round(self.num_patches * self.mask_proportion**2)
-
-        # maintains the overall proportion of pixels masked within the image
-        num_partial_masked = round(
-            self.num_patches
-            * self.mask_proportion
-            * (1 - self.mask_proportion)
-            * (1 / self.mask_proportion)
-        )
-
+        B, C, H, W = x.shape
         mask = torch.ones(B, H, W, dtype=torch.bool)
-
-        def sample(num_total, num_keep):
-            return torch.randperm(num_total)[:num_keep]
-
-        total_masked = num_fully_masked + num_partial_masked
-
-        # may not want to use loops here
-        rows = (
-            torch.stack(
-                [sample(self.patches_resolution[0], total_masked) for _ in range(B)]
-            )
-            * self.patch_size
-        )
-
-        cols = (
-            torch.stack(
-                [sample(self.patches_resolution[1], total_masked) for _ in range(B)]
-            )
-            * self.patch_size
-        )
-
-        # mask[] = False
-
-        mask.unsqueeze(1)  # add channel dim
-        x[mask] = self.mask_token
+        # Apply the masking on the input tensor x
+        # Add a dimension to the mask to match the number of dimensions of x
+        mask = mask.unsqueeze(1)  # shape: [B, 1, H, W]
+        # Expand mask to match the number of channels
+        mask = mask.expand(-1, C, -1, -1)  # shape: [B, C, H, W]
+        # Apply the mask to the input tensor x
+        x_masked = x.masked_fill(mask, self.mask_token)
+        return x_masked, x
 
 
         # fully masked patches are replaced w/ 0 using slices (e.g., [index : index + patch_size])
