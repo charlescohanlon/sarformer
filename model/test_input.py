@@ -31,6 +31,7 @@ def load_and_preprocess_images(dem_path, naip_path):
 #image_tensor = load_and_preprocess_images(r'C:\Users\camer\OneDrive\Documents\AI4SAR\DL4SAR\loaders\TestInputs\DEM_643554.tif', \
 #                                          r'C:\Users\camer\OneDrive\Documents\AI4SAR\DL4SAR\loaders\TestInputs\NAIP_643554.tif')
 
+# text = torch.randn(1, 100) # Batch size of 1, 100 features
 text = [
     "A scent of sagebrush and earth: I find a faint scent of sagebrush and earth in the air...",
 ]
@@ -52,17 +53,20 @@ swin_masked = torch.randn(1, 2048, 768)
 swin_embed = torch.randn(1, 64, 768)
 
 
-cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
+cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1).permute(0, 2, 1)
 if model.mask_proportions:
     # NOTE: swin_masked is (batch, (512 / 4)^2, 96). We'll need to pad the embedding 
     # dims of tab_masked and bert_masked to concat them
     bert_masked = F.pad(bert_masked, (0, 768 - bert_masked.size(2)))
     tab_masked = F.pad(tab_masked, (0, 768 - tab_masked.size(2)))
 
-    cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
+    cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1).permute(0, 2, 1)
 
     # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
     # "masked" is the input with the mask applied (input to the mhsa sublayer)
+    print(cat_embed.shape)
+    print(cat_masked.shape)
+    
     output = model.decoder(inputs = {"embed": cat_embed, "masked": cat_masked})
 
 else:

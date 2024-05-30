@@ -14,6 +14,7 @@ def generate_fake_data(num_samples, text_max_seq_len):
     texts = dataset["text"][:num_samples]
 
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    # maybe tokenize?
 
     text_data = []
     for text in texts:
@@ -73,6 +74,7 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         
         reconstructed_image, reconstructed_text, reconstructed_tabular = model(image, text, tabular)
+        print("reconstruction done")
         loss = criterion(reconstructed_image, image) + criterion(reconstructed_text, text) + criterion(reconstructed_tabular, tabular)
         loss.backward()
         optimizer.step()
