@@ -3,7 +3,7 @@ import torch.nn as nn
 from swinv2_encoder import SwinTransformerV2
 from bert_encoder import BertEncoder
 from tabular_encoder import TabularEncoder
-from decoder_transformer import Decoder
+from model.transformer_decoder import Decoder
 import torch.nn.functional as F
 
 
@@ -49,14 +49,13 @@ class SARFormer(nn.Module):
         swin_embed = self.swin_encoder(image_tensor)
         tab_embed = self.tabular_encoder(tabular_tensor)
 
-        
         # if mask proportions specified, forward() returned the masked input with the embeddings
         if self.mask_proportions:
             swin_masked, swin_embed = swin_embed
             bert_masked, bert_embed = bert_embed
             tab_masked, tab_embed = tab_embed
 
-        # Concat along sequence dimension
+        # concat along sequence dimension
         swin_embed = torch.tensor(swin_embed).transpose(2, 1)
         cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
         if self.mask_proportions:

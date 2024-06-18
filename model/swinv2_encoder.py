@@ -799,28 +799,13 @@ class SwinTransformerV2(nn.Module):
         x = self.avgpool(x.transpose(1, 2))
 
         if self.mask_proportion:
-            pass
-            # return masked_input, x
+            return masked_input, x
 
         return x
 
-    def flops(self):
-        flops = 0
-        flops += self.patch_embed.flops()
-        for layer in self.layers:
-            flops += layer.flops()
-        flops += (
-            self.num_features
-            * self.patches_resolution[0]
-            * self.patches_resolution[1]
-            // (2**self.num_layers)
-        )
-        flops += self.num_features * self.num_classes
-        return flops
-
     def mask(self, x):  # this would go before the projection
         with torch.no_grad():
-            B, _, H, W = x.shape
+            B, C, H, W = x.shape
 
             num_masked = self.num_patches * self.mask_proportion
 
@@ -846,52 +831,37 @@ class SwinTransformerV2(nn.Module):
             ).argsort(dim=1)[:, :adjusted_num_masked]
 
             # all possible (row, col) permutations to choose from
-            possible_tuples = torch.stack(
-                (
-                    (
-                        # all valid row indices incremented by patch_size
-                        torch.arange(self.patches_resolution[0])
-                        * self.patch_size
-                    ).repeat_interleave(self.patches_resolution[1]),
-                    (
-                        # all valid col indices incremented by patch_size
-                        torch.arange(self.patches_resolution[0])
-                        * self.patch_size
-                    ).repeat(self.patches_resolution[1]),
-                )
+            possible_tuples = torch.cartesian_prod(
+                torch.arange(self.patches_resolution[0]) * self.patch_size,
+                torch.arange(self.patches_resolution[1]) * self.patch_size,
             )
 
             # these are the selected tuples (out of all possible tuples) for fully masked patches
+            # is shape (patch_area * num_fully_masked * B, 2)
+            # interleaves indices to make room for all permutations
             full_patch_tuples = possible_tuples[
-                :, chosen_idxs[:, :num_fully_masked].flatten()
-            ]
+                chosen_idxs[:, :num_fully_masked].flatten(), :
+            ].repeat_interleave(patch_area, dim=0)
+
+            # the number of individual pixels (specks) to mask in the partially masked patches
+            num_patch_specks = round(patch_area * self.mask_proportion)
 
             # selected tuples for the partially masked patches within the image
+            # interleaves indices to make room for the random permutations within the partial patches
             partial_patch_tuples = possible_tuples[
-                :, chosen_idxs[:, num_fully_masked:].flatten()
-            ]
+                chosen_idxs[:, num_fully_masked:].flatten(), :
+            ].repeat_interleave(num_patch_specks, dim=0)
 
             # free unused memory
             del possible_tuples
             gc.collect()
             torch.cuda.empty_cache()
 
-            # duplicate indices to make room for all permutations
-            full_patch_tuples = full_patch_tuples.repeat_interleave(patch_area, dim=1)
-
             # offsets create all permutations of indices to fill in the patches
-            full_patch_offsets = torch.stack(
-                (
-                    # row offsets
-                    torch.arange(self.patch_size)
-                    .repeat_interleave(self.patch_size)
-                    .repeat(num_fully_masked * B),
-                    # col offsets
-                    torch.arange(self.patch_size).repeat(
-                        self.patch_size * num_fully_masked * B
-                    ),
-                )
-            )
+            # is shape (patch_area * num_fully_masked * B, 2)
+            full_patch_offsets = torch.cartesian_prod(
+                torch.arange(self.patch_size), torch.arange(self.patch_size)
+            ).repeat(num_fully_masked * B, 1)
             full_patch_tuples += full_patch_offsets
 
             # free unused memory
@@ -904,14 +874,6 @@ class SwinTransformerV2(nn.Module):
                 patch_area * num_fully_masked
             )
 
-            # the number of individual pixels (specks) to mask in the partially masked patches
-            num_patch_specks = round(patch_area * self.mask_proportion)
-
-            # duplicate indices to make room the random permutations within the partial patches
-            partial_patch_tuples = partial_patch_tuples.repeat_interleave(
-                num_patch_specks, dim=1
-            )
-
             # create random indices to use in partial patches
             # again sampling w/o replacement using argsort()
             intra_patch_idxs = torch.randint(
@@ -919,16 +881,13 @@ class SwinTransformerV2(nn.Module):
             ).argsort(dim=2)[:, :, :num_patch_specks]
 
             # create all possible tuples within a patch
-            intra_patch_possible_tuples = torch.stack(
-                (
-                    torch.arange(self.patch_size).repeat_interleave(self.patch_size),
-                    torch.arange(self.patch_size).repeat(self.patch_size),
-                )
+            intra_patch_possible_tuples = torch.cartesian_prod(
+                torch.arange(self.patch_size), torch.arange(self.patch_size)
             )
 
             # select offsets corresponding to the sample
             chosen_speck_offsets = intra_patch_possible_tuples[
-                :, intra_patch_idxs.flatten()
+                intra_patch_idxs.flatten(), :
             ]
             partial_patch_tuples += chosen_speck_offsets
 
@@ -943,19 +902,36 @@ class SwinTransformerV2(nn.Module):
             )
 
             # these corrospond via each element's position when used as the mask's indices
-            row_idxs = torch.cat((full_patch_tuples[0], partial_patch_tuples[0]))
-            col_idxs = torch.cat((full_patch_tuples[1], partial_patch_tuples[1]))
+            row_idxs = torch.cat((full_patch_tuples[:, 0], partial_patch_tuples[:, 0]))
+            col_idxs = torch.cat((full_patch_tuples[:, 1], partial_patch_tuples[:, 1]))
             batch_idxs = torch.cat((full_patch_batch_idxs, partial_patch_batch_idxs))
 
-            mask = torch.ones(B, H, W)
-            mask[batch_idxs, row_idxs, col_idxs] = 0
+            mask = torch.ones(B, C, H, W, dtype=torch.bool)
+            mask[batch_idxs, :, row_idxs, col_idxs] = False
 
-            # x[mask.to(torch.bool)] = self.mask_token
+            # the reduced-size input
+            reduced_x = x[mask]
 
-            # after the projection:
-            # avgpool the mask with a kernal and stride of patch size and flatten equivalent to projection
-            # then ceil() the mask and
-            # convert to boolean to remove only fully masked patches
-            # use this projected mask to remove the equivalent vectors in the input volume
+            # the full-size masked input
+            x[~mask] = self.mask_token
 
-            return mask.unsqueeze(1)
+            # free unused memory
+            del row_idxs, col_idxs, batch_idxs, mask
+            gc.collect()
+            torch.cuda.empty_cache()
+
+            return x, reduced_x
+
+    def flops(self):
+        flops = 0
+        flops += self.patch_embed.flops()
+        for layer in self.layers:
+            flops += layer.flops()
+        flops += (
+            self.num_features
+            * self.patches_resolution[0]
+            * self.patches_resolution[1]
+            // (2**self.num_layers)
+        )
+        flops += self.num_features * self.num_classes
+        return flops
