@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from swinv2_encoder import SwinTransformerV2
-from bert_encoder import BertEncoder
-from tabular_encoder import TabularEncoder
+from model.swinv2_encoder import SwinTransformerV2
+from model.bert_encoder import BertEncoder
+from model.tabular_encoder import TabularEncoder
 from model.transformer_decoder import Decoder
 import torch.nn.functional as F
 
@@ -67,8 +67,6 @@ class SARFormer(nn.Module):
             # "masked" is the input with the mask applied (input to the mhsa sublayer)
             print(cat_embed.shape)
             print(cat_masked.shape)
-            return self.decoder(
-                inputs={"embed": cat_embed, "masked": cat_masked}
-            )
+            return self.decoder(inputs={"embed": cat_embed, "masked": cat_masked})
 
         return self.decoder({"embed": cat_embed})

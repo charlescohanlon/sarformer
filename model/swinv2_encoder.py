@@ -728,6 +728,9 @@ class SwinTransformerV2(nn.Module):
             )
             trunc_normal_(self.absolute_pos_embed, std=0.02)
 
+        if self.mask_proportion:
+            self.mask_avgpool = nn.AvgPool2d(kernel_size=patch_size, stride=patch_size)
+
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         # stochastic depth
@@ -785,11 +788,14 @@ class SwinTransformerV2(nn.Module):
 
     def forward(self, x):
         if self.mask_proportion:
-            masked_input, x = self.mask(x)
+            masked_raw_x, mask = self.mask(x)
+
         x = self.patch_embed(x)
         if self.ape or self.mask_proportion:
-            # TODO: figure out what's going on with this
             x = x + self.absolute_pos_embed
+        if self.mask_proportion:
+            B, _, C = x.shape
+            x = x[mask].reshape(B, -1, C)  # TODO: test forward pass with masking
         x = self.pos_drop(x)
 
         for layer in self.layers:
@@ -799,11 +805,11 @@ class SwinTransformerV2(nn.Module):
         x = self.avgpool(x.transpose(1, 2))
 
         if self.mask_proportion:
-            return masked_input, x
+            return masked_raw_x, x
 
         return x
 
-    def mask(self, x):  # this would go before the projection
+    def mask(self, x):
         with torch.no_grad():
             B, C, H, W = x.shape
 
@@ -862,6 +868,7 @@ class SwinTransformerV2(nn.Module):
             full_patch_offsets = torch.cartesian_prod(
                 torch.arange(self.patch_size), torch.arange(self.patch_size)
             ).repeat(num_fully_masked * B, 1)
+
             full_patch_tuples += full_patch_offsets
 
             # free unused memory
@@ -889,6 +896,7 @@ class SwinTransformerV2(nn.Module):
             chosen_speck_offsets = intra_patch_possible_tuples[
                 intra_patch_idxs.flatten(), :
             ]
+
             partial_patch_tuples += chosen_speck_offsets
 
             # free unused memory
@@ -906,21 +914,31 @@ class SwinTransformerV2(nn.Module):
             col_idxs = torch.cat((full_patch_tuples[:, 1], partial_patch_tuples[:, 1]))
             batch_idxs = torch.cat((full_patch_batch_idxs, partial_patch_batch_idxs))
 
-            mask = torch.ones(B, C, H, W, dtype=torch.bool)
-            mask[batch_idxs, :, row_idxs, col_idxs] = False
-
-            # the reduced-size input
-            reduced_x = x[mask]
-
-            # the full-size masked input
-            x[~mask] = self.mask_token
+            mask = torch.ones(B, C, H, W)
+            mask[batch_idxs, :, row_idxs, col_idxs] = 0
 
             # free unused memory
             del row_idxs, col_idxs, batch_idxs, mask
             gc.collect()
             torch.cuda.empty_cache()
 
-            return x, reduced_x
+            # masked full-size clone of x for decoder
+            masked_raw_x = x.detach().clone()
+            masked_raw_x[~mask.to(torch.bool)] = self.mask_token
+
+            # transform mask to be same shape as post-patch-embed x
+            # this is so ape can be applied to x before the mask is
+            mask = self.mask_avgpool(mask)
+            mask = (
+                # ceil() to include partially masked patches, floor() to not
+                torch.floor(mask)
+                .to(torch.bool)
+                .repeat(1, self.embed_dim, 1, 1)
+                .flatten(2)
+                .transpose(1, 2)
+            )
+
+            return masked_raw_x, mask
 
     def flops(self):
         flops = 0
