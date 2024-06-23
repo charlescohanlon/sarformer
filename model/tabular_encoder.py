@@ -2,71 +2,87 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class TabularEncoder(nn.Module):
     def __init__(
         self,
         in_dim,
         out_dim,
         num_layers=4,
-        layer_dim=None,
+        layer_dims=None,
         act_layer=nn.ReLU,
         dropout_prob=0.0,
-        use_batch_norm=True,
+        norm_layer=nn.BatchNorm1d,
         mask_proportion=0,
-        reshape_dim=None
+        mask_token=0,
     ):
         super().__init__()
 
         self.layers = nn.ModuleList()
-        self.use_batch_norm = use_batch_norm
-        self.masked_proportion = mask_proportion
+        self.norm = norm_layer
+        self.mask_proportion = mask_proportion
+        self.mask_token = mask_token
 
-        # If layer_dim is not provided, linearly increase embedding dim over layers
-        if layer_dim is None:
-            layer_dim = [
+        if mask_proportion:
+            self.num_masked = round(in_dim * mask_proportion)
+
+        # linearly increase embedding dim over each layers
+        if layer_dims is None:
+            layer_dims = [
                 int(in_dim + i * ((out_dim - in_dim) / num_layers))
                 for i in range(num_layers + 1)
             ]
 
-        # Add dropout layer
         self.dropout = nn.Dropout(p=dropout_prob)
 
-        # Add layers with activation and batch normalization
         for i in range(num_layers):
             self.layers.append(
                 nn.Linear(
-                    in_features=layer_dim[i],
-                    out_features=layer_dim[i + 1],
+                    in_features=layer_dims[i],
+                    out_features=layer_dims[i + 1],
                 )
             )
-            if self.use_batch_norm:
-                self.layers.append(nn.BatchNorm1d(layer_dim[i + 1]))
+
+            if norm_layer:
+                self.layers.append(norm_layer(layer_dims[i + 1]))
 
             self.layers.append(act_layer())
 
-        self.reshape_dim = reshape_dim
-
     def forward(self, x):
-        #self.eval()
-        mask = None
-        if self.masked_proportion is not None:
-            num_columns = x.shape[1]
-            num_masked_columns = int(self.masked_proportion * num_columns)
-            mask = torch.ones_like(x)
-            mask[:, torch.randperm(num_columns)[:num_masked_columns]] = 0
+        if self.mask_proportion:
+            masked_full_x, mask, x = self.create_and_apply_mask(x)
 
         for layer in self.layers:
             x = layer(x)
 
         x = self.dropout(x)
-        
-        if self.reshape_dim is not None:
-            batch_size = x.size(0)
-            something = x.size(1)
-            hidden_dim = x.size(2)
-            x = x.view(batch_size, something, hidden_dim)
-        
-        if self.masked_proportion is not None:
-            return mask.unsqueeze(1), x.unsqueeze(1)
+
+        if self.mask_proportion:
+            return masked_full_x, mask, x
+
         return x
 
+    def create_and_apply_mask(self, x):
+        B, num_features = x.shape
+
+        # choose random mask indices
+        chosen_idxs = (
+            torch.randint(high=num_features, size=(B, num_features))
+            .argsort(dim=1)[:, : self.num_masked]
+            .flatten()
+        )
+
+        # create corresponding batch indices
+        batch_idxs = torch.arange(B).repeat_interleave(self.num_masked)
+
+        mask = torch.ones_like(x)
+        mask[batch_idxs, chosen_idxs] = 0
+
+        masked_full_x = x.detach().clone()
+        masked_full_x[~mask.to(torch.bool)] = self.mask_token
+
+        # NOTE: the we're not shrinking the vector here
+        # doing so wouldn't make sense in the context of a MLP
+        x *= mask
+
+        return masked_full_x, mask, x

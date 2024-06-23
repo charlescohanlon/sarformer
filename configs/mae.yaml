@@ -1,0 +1,30 @@
+swin:
+  img_size: 512
+  # SimMIM says we may want to up patch size
+  patch_size: 8
+  in_chans: 4
+  depths: [2, 2, 18, 2]
+  # NOTE: prefer to decrease window size
+  window_size: 6
+  # TODO: set this when not mae:
+  pretrained_window_sizes: [0, 0, 0, 0]
+  ape: True
+  mask_token: 0
+  mask_proportion: 0.662
+bert:
+  max_tokens: 1024
+  
+
+# NOTES
+# Will want to implement check points
+# Will want to measure slow down due to manual garbage collection during swin mae forward pass
+# How is SimMIM/MultiMAE able to set such a large patch size w/ a smaller image size??
+
+# MultiMAE: https://arxiv.org/pdf/2204.01678
+# - We'll want to predict standardized RGB patches in decoder
+# - only want to compute loss on masked pix
+
+# SimMIM: https://arxiv.org/pdf/2111.09886
+# - Learnable mask token?
+
+

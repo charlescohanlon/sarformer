@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from model.swinv2_encoder import SwinTransformerV2
-from model.bert_encoder import BertEncoder
+from model.roberta_encoder import RoBERTa
 from model.tabular_encoder import TabularEncoder
 from model.transformer_decoder import Decoder
 import torch.nn.functional as F
@@ -28,18 +28,18 @@ class SARFormer(nn.Module):
             mask_proportion=self.mask_proportions["swin"],
         )
 
-        self.bert_encoder = BertEncoder(
-            embedding_layers=12,
-            max_tokens=text_max_seq_len,
-            mask_proportion=self.mask_proportions["bert"],
-        )
+        # self.bert_encoder = BertEncoder(
+        #     num_embed_layers=12,
+        #     max_tokens=text_max_seq_len,
+        #     mask_proportion=self.mask_proportions["bert"],
+        # )
 
         self.tabular_encoder = TabularEncoder(
             num_tab_features,
             dim_embed,
             act_layer=nn.ReLU,
             mask_proportion=self.mask_proportions["tabular"],
-            use_batch_norm=False,
+            norm_layer=False,
         )
 
         self.decoder = Decoder()

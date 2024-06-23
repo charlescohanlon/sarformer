@@ -13,7 +13,6 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
-from math import sqrt
 import gc
 
 
@@ -695,7 +694,6 @@ class SwinTransformerV2(nn.Module):
         pretrained_window_sizes=[0, 0, 0, 0],
         mask_proportion=0.0,
         mask_token=0,
-        **kwargs,
     ):
         super().__init__()
         self.num_layers = len(depths)
@@ -726,7 +724,6 @@ class SwinTransformerV2(nn.Module):
                 window_size,
                 self.num_patches,
                 mask_proportion,
-                patches_resolution,
             )
 
         self.patches_resolution = patches_resolution
@@ -785,9 +782,7 @@ class SwinTransformerV2(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def _init_mask(
-        self, patch_size, window_size, num_patches, mask_proportion, patches_resolution
-    ):
+    def _init_mask(self, patch_size, window_size, num_patches, mask_proportion):
         # to produce same downsampling affect on mask as the PatchEmbed module's Conv2d
         self.mask_avgpool = nn.AvgPool2d(kernel_size=patch_size, stride=patch_size)
 
@@ -806,9 +801,11 @@ class SwinTransformerV2(nn.Module):
         self.num_partially_masked_px = round(patch_size**2 * mask_proportion)
 
         # the patches resolution after the mask is applied
-        post_mask_resolution = round(sqrt(num_patches * (1 - mask_proportion**2)))
-        # has to be a muliple of 8 and the window size at the same time
-        assert post_mask_resolution / 8 % window_size == 0
+        post_mask_resolution = round((num_patches * (1 - mask_proportion**2)) ** 0.5)
+
+        assert (
+            post_mask_resolution / 8 % window_size == 0
+        ), f"resolution {post_mask_resolution} has to be a muliple of 8 and the window size at the same time"
 
         return (post_mask_resolution,) * 2
 
@@ -838,7 +835,6 @@ class SwinTransformerV2(nn.Module):
             x = layer(x)
 
         x = self.norm(x)  # B L C
-        x = self.avgpool(x.transpose(1, 2))
 
         if self.mask_proportion:
             return masked_full_x, mask, x
@@ -904,10 +900,14 @@ class SwinTransformerV2(nn.Module):
 
             # create random indices to use in partial patches
             # again sampling w/o replacement using argsort()
-            intra_patch_idxs = torch.randint(
-                high=self.patch_size**2,
-                size=(B, self.num_partially_masked, self.patch_size**2),
-            ).argsort(dim=2)[:, :, : self.num_partially_masked_px]
+            intra_patch_idxs = (
+                torch.randint(
+                    high=self.patch_size**2,
+                    size=(B, self.num_partially_masked, self.patch_size**2),
+                )
+                .argsort(dim=2)[:, :, : self.num_partially_masked_px]
+                .flatten()
+            )
 
             # create all possible tuples within a patch
             intra_patch_possible_tuples = torch.cartesian_prod(
@@ -915,9 +915,7 @@ class SwinTransformerV2(nn.Module):
             )
 
             # select offsets corresponding to the sample
-            chosen_px_offsets = intra_patch_possible_tuples[
-                intra_patch_idxs.flatten(), :
-            ]
+            chosen_px_offsets = intra_patch_possible_tuples[intra_patch_idxs, :]
 
             partial_patch_tuples += chosen_px_offsets
 
@@ -954,7 +952,9 @@ class SwinTransformerV2(nn.Module):
 
             # masked full-size clone of x for decoder
             masked_full_x = x.detach().clone()
-            masked_full_x[~mask.to(torch.bool)] = self.mask_token
+            # when switching to learned mask token use line 36 from
+            # https://github.com/microsoft/SimMIM/blob/main/models/simmim.py
+            masked_full_x[(1 - mask).to(torch.bool)] = self.mask_token
 
             x *= mask
 
@@ -993,11 +993,11 @@ class SwinTransformerV2(nn.Module):
             actual_size = x.shape[1]
             # this is the expected size of dim 1 if only fully masked patches are removed
             expected_size = (
-                round(sqrt(self.num_patches * (1 - self.mask_proportion**2))) ** 2
+                round((self.num_patches * (1 - self.mask_proportion**2)) ** 0.5) ** 2
             )
 
+            assert expected_size > actual_size
             # pad dim 1 w/ zeros to account for rounding error
-            # NOTE: expected_size should be > actual_size
             x = F.pad(x, (0, 0, 0, expected_size - actual_size, 0, 0))
 
             return x
