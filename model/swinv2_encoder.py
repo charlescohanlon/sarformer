@@ -819,7 +819,7 @@ class SwinTransformerV2(nn.Module):
 
     def forward(self, x):
         if self.mask_proportion:
-            masked_full_x, mask, x = self.pre_patch_embed_mask(x)
+            masked_full_x, mask, x = self.mask_pre_embed(x)
 
         x = self.patch_embed(x)
 
@@ -827,7 +827,7 @@ class SwinTransformerV2(nn.Module):
             x = x + self.absolute_pos_embed
 
         if self.mask_proportion:
-            x = self.post_patch_embed_mask(mask, x)
+            x = self.mask_post_embed(mask, x)
 
         x = self.pos_drop(x)
 
@@ -841,7 +841,7 @@ class SwinTransformerV2(nn.Module):
 
         return x
 
-    def pre_patch_embed_mask(self, x):
+    def mask_pre_embed(self, x):
         with torch.no_grad():
             B = x.shape[0]
 
@@ -875,11 +875,6 @@ class SwinTransformerV2(nn.Module):
                 chosen_idxs[:, self.num_fully_masked :].flatten(), :
             ].repeat_interleave(self.num_partially_masked_px, dim=0)
 
-            # free unused memory
-            del possible_tuples
-            gc.collect()
-            torch.cuda.empty_cache()
-
             # offsets create all permutations of indices to fill in the patches
             # is shape (patch_size^2 * num_fully_masked * B, 2)
             full_patch_offsets = torch.cartesian_prod(
@@ -887,11 +882,6 @@ class SwinTransformerV2(nn.Module):
             ).repeat(self.num_fully_masked * B, 1)
 
             full_patch_tuples += full_patch_offsets
-
-            # free unused memory
-            del full_patch_offsets
-            gc.collect()
-            torch.cuda.empty_cache()
 
             # corresponding batch dimension index for each full patch tuple
             full_patch_batch_idxs = torch.arange(B).repeat_interleave(
@@ -919,11 +909,6 @@ class SwinTransformerV2(nn.Module):
 
             partial_patch_tuples += chosen_px_offsets
 
-            # free unused memory
-            del intra_patch_idxs, chosen_px_offsets
-            gc.collect()
-            torch.cuda.empty_cache()
-
             # corresponding batch dimension for each partial patch tuple
             partial_patch_batch_idxs = torch.arange(B).repeat_interleave(
                 self.num_partially_masked * self.num_partially_masked_px
@@ -937,19 +922,6 @@ class SwinTransformerV2(nn.Module):
             mask = torch.ones_like(x)
             mask[batch_idxs, :, row_idxs, col_idxs] = 0
 
-            # free unused memory
-            del (
-                full_patch_tuples,
-                partial_patch_tuples,
-                full_patch_batch_idxs,
-                partial_patch_batch_idxs,
-                row_idxs,
-                col_idxs,
-                batch_idxs,
-            )
-            gc.collect()
-            torch.cuda.empty_cache()
-
             # masked full-size clone of x for decoder
             masked_full_x = x.detach().clone()
             # when switching to learned mask token use line 36 from
@@ -960,7 +932,7 @@ class SwinTransformerV2(nn.Module):
 
             return masked_full_x, mask, x
 
-    def post_patch_embed_mask(self, mask, x):
+    def mask_post_embed(self, mask, x):
         with torch.no_grad():
             # transform mask to be same shape as post-patch-embed x
             # this is so ape can be applied to x before the mask is
@@ -984,11 +956,6 @@ class SwinTransformerV2(nn.Module):
             # for all batches, gather() collects along dim=1 all of abs_sorted_idxs
             # indices while maintaining the order they show up in abs_sorted_idxs
             x = x.gather(dim=1, index=abs_sorted_idxs)[:, self.num_fully_masked :]
-
-            # free unused memory
-            del _, abs_sorted_idxs, transformed_mask
-            gc.collect()
-            torch.cuda.empty_cache()
 
             actual_size = x.shape[1]
             # this is the expected size of dim 1 if only fully masked patches are removed

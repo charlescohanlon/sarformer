@@ -7,58 +7,39 @@ from transformers import RobertaConfig, RobertaModel
 class RoBERTa(nn.Module):
     def __init__(
         self,
-        max_length=512,
-        pad_token=1,  # RoBERTa tokenizer pad token
+        embed_dim=768,
+        num_hidden_layers=12,
+        max_num_tokens=512,
         mask_proportion=0.0,
         mask_token=0,
+        ape=True,
     ):
         super().__init__()
-        self.max_length = max_length
-        self.pad_token = pad_token
         self.mask_proportion = mask_proportion
         self.mask_token = mask_token
 
-        config = RobertaConfig()
+        config = RobertaConfig(
+            hidden_act=embed_dim,
+            num_hidden_layers=num_hidden_layers,
+            max_position_embeddings=max_num_tokens,
+            position_embedding_type="absolute" if ape else "relative_key",
+        )
         self.model = RobertaModel(config, add_pooling_layer=False)
 
-    def forward(self, x):
-        seq_len = x.shape[1]
-        # a mask is required even when mask_proportion=0 b/c RobertaModel wants
-        # padding to be masked
-        mask = torch.ones_like(x)
-        mask = F.pad(mask, (0, self.max_length - seq_len))
-
-        # pad to full length
-        x = F.pad(x, (0, self.max_length - seq_len), value=self.pad_token)
-
+    def forward(self, x, mask):
         if self.mask_proportion:
-            masked_full_x, mask = self.create_mask(x, mask, seq_len)
+            masked_full_x = self.mask(x, mask)
 
         # mask applied in HF model class
-        x = self.model(x, attention_mask=mask).last_hidden_state
+        x = self.model(x[0], attention_mask=mask).last_hidden_state
 
         if self.mask_proportion:
-            return masked_full_x, mask, x
+            return masked_full_x, x
 
         return x
 
-    def create_mask(self, x, mask, seq_len):
-        B = x.shape[0]
-        num_masked = round(seq_len * self.mask_proportion)
-
-        # choose random mask indices
-        chosen_idxs = (
-            torch.randint(high=seq_len, size=(B, seq_len))
-            .argsort(dim=1)[:, :num_masked]
-            .flatten()
-        )
-
-        # create corresponding batch indices
-        batch_idxs = torch.arange(B).repeat_interleave(num_masked)
-
-        mask[batch_idxs, chosen_idxs] = 0
-
+    def mask(self, x, mask):
         masked_full_x = x.detach().clone()
         masked_full_x[~mask.to(torch.bool)] = self.mask_token
 
-        return masked_full_x, mask
+        return masked_full_x

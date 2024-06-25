@@ -12,7 +12,7 @@ swin:
   mask_token: 0
   mask_proportion: 0.662
 bert:
-  max_tokens: 1024
+  max_tokens: 512
   
 
 # NOTES

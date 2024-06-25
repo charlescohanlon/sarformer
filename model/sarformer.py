@@ -10,11 +10,25 @@ import torch.nn.functional as F
 class SARFormer(nn.Module):
     def __init__(
         self,
+        embed_dim=768,
         img_size=512,
-        dim_embed=768,
-        num_tab_features=10,
-        text_max_seq_len=1024,
+        img_chans=4,
+        swin_patch_size=8,
+        swin_depths=[2, 2, 18, 2],
+        swin_window_size=6,
+        swin_pretrained_window_sizes=[0, 0, 0, 0],
+        swin_use_ape=False,
+        text_max_tokens=512,
+        roberta_num_hidden_layers=12,
+        roberta_ape=True,
+        tabular_num_features=19,
+        tabular_num_hidden_layers=4,
+        tabular_layer_dims=None,
+        tabular_dropout_prob=0,
+        decoder_num_heads=1,
+        decoder_num_blocks=1,
         mask_proportions={},
+        mask_token=0,
     ):
         super().__init__()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,50 +37,88 @@ class SARFormer(nn.Module):
 
         self.swin_encoder = SwinTransformerV2(
             img_size=img_size,
-            patch_size=4,
-            in_chans=4,
-            mask_proportion=self.mask_proportions["swin"],
+            patch_size=swin_patch_size,
+            in_chans=img_chans,
+            embed_dim=embed_dim // 8,
+            depths=swin_depths,
+            window_size=swin_window_size,
+            ape=swin_use_ape,
+            pretrained_window_sizes=swin_pretrained_window_sizes,
+            mask_proportion=mask_proportions["swin"],
+            mask_token=mask_token,
         )
 
-        # self.bert_encoder = BertEncoder(
-        #     num_embed_layers=12,
-        #     max_tokens=text_max_seq_len,
-        #     mask_proportion=self.mask_proportions["bert"],
-        # )
+        self.roberta_encoder = RoBERTa(
+            embed_dim=embed_dim,
+            num_hidden_layers=roberta_num_hidden_layers,
+            max_num_tokens=text_max_tokens,
+            mask_proportion=mask_proportions["roberta"],
+            mask_token=mask_token,
+            ape=roberta_ape,
+        )
 
         self.tabular_encoder = TabularEncoder(
-            num_tab_features,
-            dim_embed,
+            in_dim=tabular_num_features,
+            out_dim=embed_dim,
+            num_layers=tabular_num_hidden_layers,
+            layer_dims=tabular_layer_dims,
             act_layer=nn.ReLU,
-            mask_proportion=self.mask_proportions["tabular"],
-            norm_layer=False,
+            dropout_prob=tabular_dropout_prob,
+            norm_layer=nn.BatchNorm1d,
+            mask_proportion=mask_proportions["tabular"],
+            mask_token=mask_token,
         )
 
-        self.decoder = Decoder()
+        self.decoder = Decoder(
+            num_heads=decoder_num_heads,
+            num_blocks=decoder_num_blocks,
+            mask_proportion=mask_proportions,
+            mask_token=mask_token,
+        )
 
-    def forward(self, image_tensor, text_tensor, tabular_tensor):
-        bert_embed = self.bert_encoder(text_tensor)
-        swin_embed = self.swin_encoder(image_tensor)
-        tab_embed = self.tabular_encoder(tabular_tensor)
+        if mask_proportions:
+            self.img_expand_features = nn.Conv2d(
+                in_channels=img_chans,
+                out_channels=embed_dim,
+                kernel_size=swin_patch_size,
+                stride=swin_patch_size,
+            )
+            self.text_expand_features = nn.Linear(in_features=1, out_features=embed_dim)
+            self.tab_expand_features = nn.Linear(
+                in_features=tabular_num_features, out_features=embed_dim
+            )
 
-        # if mask proportions specified, forward() returned the masked input with the embeddings
+    def forward(self, img_tensor, text_tensor, text_mask, tab_tensor):
+        embed_img = self.swin_encoder(img_tensor)
+        embed_text = self.roberta_encoder(text_tensor, text_mask)
+        embed_tab = self.tabular_encoder(tab_tensor)
+
+        # if mask proportions specified, forward() returns the masked input,
+        # the mask (except the text one), and the embeddings
         if self.mask_proportions:
-            swin_masked, swin_embed = swin_embed
-            bert_masked, bert_embed = bert_embed
-            tab_masked, tab_embed = tab_embed
+            masked_img, img_mask, embed_img = embed_img
+            masked_text, embed_text = embed_text
+            masked_tab, tab_mask, embed_tab = embed_tab
 
         # concat along sequence dimension
-        swin_embed = torch.tensor(swin_embed).transpose(2, 1)
-        cat_embed = torch.cat((tab_embed, swin_embed, bert_embed), dim=1)
+        all_embed = torch.cat((embed_tab, embed_text, embed_img), dim=1)
+
         if self.mask_proportions:
-            swin_masked = F.pad(swin_masked.reshape(32, 2048, 512), (0, 256))
-            tab_masked = F.pad(tab_masked, (0, 768 - tab_masked.size(2)))
-            cat_masked = torch.cat((tab_masked, swin_masked, bert_masked), dim=1)
+            # expand each of the feature dims to the encoder's embed dim
+            masked_img = self.img_expand_features(masked_img).flatten(2).transpose(1, 2)
+            masked_text = self.text_expand_features(masked_text)
+            masked_tab = self.tab_expand_features(masked_tab)
 
-            # "embed" is the shrunken embeddings (input to the cross-attention sublayer)
-            # "masked" is the input with the mask applied (input to the mhsa sublayer)
-            print(cat_embed.shape)
-            print(cat_masked.shape)
-            return self.decoder(inputs={"embed": cat_embed, "masked": cat_masked})
+            all_masked = torch.cat((masked_tab, masked_text, embed_img), dim=1)
 
-        return self.decoder({"embed": cat_embed})
+            return
+            y = self.decoder(
+                dec_input=all_masked,
+                enc_output=all_embed,
+            )
+
+            return y, img_mask, text_mask, tab_mask
+
+        y = self.decoder(img_tensor, enc_output=all_embed)
+
+        return y

@@ -2,7 +2,7 @@ import torch
 from PIL import Image
 import numpy as np
 import rasterio
-from sarformer import SARFormer
+from model.sarformer import SARFormer
 import torch.nn.functional as F
 
 model = SARFormer(512, 768, mask_proportions={"swin":0.5,"bert":0.5,"tabular":0.5})

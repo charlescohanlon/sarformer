@@ -50,7 +50,7 @@ class TabularEncoder(nn.Module):
 
     def forward(self, x):
         if self.mask_proportion:
-            masked_full_x, mask, x = self.create_and_apply_mask(x)
+            masked_full_x, mask, x = self.mask(x)
 
         for layer in self.layers:
             x = layer(x)
@@ -62,27 +62,28 @@ class TabularEncoder(nn.Module):
 
         return x
 
-    def create_and_apply_mask(self, x):
-        B, num_features = x.shape
+    def mask(self, x):
+        with torch.no_grad():
+            B, num_features = x.shape
 
-        # choose random mask indices
-        chosen_idxs = (
-            torch.randint(high=num_features, size=(B, num_features))
-            .argsort(dim=1)[:, : self.num_masked]
-            .flatten()
-        )
+            # choose random mask indices
+            chosen_idxs = (
+                torch.randint(high=num_features, size=(B, num_features))
+                .argsort(dim=1)[:, : self.num_masked]
+                .flatten()
+            )
 
-        # create corresponding batch indices
-        batch_idxs = torch.arange(B).repeat_interleave(self.num_masked)
+            # create corresponding batch indices
+            batch_idxs = torch.arange(B).repeat_interleave(self.num_masked)
 
-        mask = torch.ones_like(x)
-        mask[batch_idxs, chosen_idxs] = 0
+            mask = torch.ones_like(x)
+            mask[batch_idxs, chosen_idxs] = 0
 
-        masked_full_x = x.detach().clone()
-        masked_full_x[~mask.to(torch.bool)] = self.mask_token
+            masked_full_x = x.detach().clone()
+            masked_full_x[~mask.to(torch.bool)] = self.mask_token
 
-        # NOTE: the we're not shrinking the vector here
-        # doing so wouldn't make sense in the context of a MLP
-        x *= mask
+            # NOTE: the we're not shrinking the vector here
+            # doing so wouldn't make sense in the context of a MLP
+            x *= mask
 
-        return masked_full_x, mask, x
+            return masked_full_x, mask, x
