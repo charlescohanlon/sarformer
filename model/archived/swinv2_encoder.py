@@ -963,7 +963,7 @@ class SwinTransformerV2(nn.Module):
                 round((self.num_patches * (1 - self.mask_proportion**2)) ** 0.5) ** 2
             )
 
-            assert expected_size > actual_size
+            assert expected_size >= actual_size
             # pad dim 1 w/ zeros to account for rounding error
             x = F.pad(x, (0, 0, 0, expected_size - actual_size, 0, 0))
 

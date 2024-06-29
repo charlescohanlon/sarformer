@@ -57,6 +57,8 @@ class TabularEncoder(nn.Module):
 
         x = self.dropout(x)
 
+        x = x.unsqueeze(1)
+
         if self.mask_proportion:
             return masked_full_x, mask, x
 
@@ -81,6 +83,7 @@ class TabularEncoder(nn.Module):
 
             masked_full_x = x.detach().clone()
             masked_full_x[~mask.to(torch.bool)] = self.mask_token
+            masked_full_x = masked_full_x.unsqueeze(1)
 
             # NOTE: the we're not shrinking the vector here
             # doing so wouldn't make sense in the context of a MLP

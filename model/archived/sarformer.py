@@ -20,7 +20,6 @@ class SARFormer(nn.Module):
         swin_use_ape=False,
         text_max_tokens=512,
         roberta_num_hidden_layers=12,
-        roberta_ape=True,
         tabular_num_features=19,
         tabular_num_hidden_layers=4,
         tabular_layer_dims=None,
@@ -31,8 +30,6 @@ class SARFormer(nn.Module):
         mask_token=0,
     ):
         super().__init__()
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        torch.set_default_device(device)
         self.mask_proportions = mask_proportions
 
         self.swin_encoder = SwinTransformerV2(
@@ -52,9 +49,6 @@ class SARFormer(nn.Module):
             embed_dim=embed_dim,
             num_hidden_layers=roberta_num_hidden_layers,
             max_num_tokens=text_max_tokens,
-            mask_proportion=mask_proportions["roberta"],
-            mask_token=mask_token,
-            ape=roberta_ape,
         )
 
         self.tabular_encoder = TabularEncoder(
@@ -89,15 +83,18 @@ class SARFormer(nn.Module):
             )
 
     def forward(self, img_tensor, text_tensor, text_mask, tab_tensor):
+        if self.mask_proportions:
+            masked_text_ids = text_tensor.detach().clone().to(torch.float32)
+            masked_text_ids[~text_mask.to(torch.bool)] = self.mask_token
+            masked_text_ids = masked_text_ids.unsqueeze(-1)
+
         embed_img = self.swin_encoder(img_tensor)
         embed_text = self.roberta_encoder(text_tensor, text_mask)
         embed_tab = self.tabular_encoder(tab_tensor)
 
-        # if mask proportions specified, forward() returns the masked input,
-        # the mask (except the text one), and the embeddings
+        # if mask proportions specified, forward() also returns the masked input and the mask
         if self.mask_proportions:
             masked_img, img_mask, embed_img = embed_img
-            masked_text, embed_text = embed_text
             masked_tab, tab_mask, embed_tab = embed_tab
 
         # concat along sequence dimension
@@ -105,17 +102,17 @@ class SARFormer(nn.Module):
 
         if self.mask_proportions:
             # expand each of the feature dims to the encoder's embed dim
-            masked_img = self.img_expand_features(masked_img).flatten(2).transpose(1, 2)
-            masked_text = self.text_expand_features(masked_text)
+            masked_img = (
+                self.img_expand_features(masked_img)
+                # flatten and transpose transform the seq dim to match the embedded img
+                .flatten(2).transpose(1, 2)
+            )
+            masked_text_ids = self.text_expand_features(masked_text_ids)
             masked_tab = self.tab_expand_features(masked_tab)
 
-            all_masked = torch.cat((masked_tab, masked_text, embed_img), dim=1)
+            all_masked = torch.cat((masked_tab, masked_text_ids, embed_img), dim=1)
 
-            return
-            y = self.decoder(
-                dec_input=all_masked,
-                enc_output=all_embed,
-            )
+            y = self.decoder(all_masked, enc_output=all_embed)
 
             return y, img_mask, text_mask, tab_mask
 
