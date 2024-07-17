@@ -1,0 +1,87 @@
+run_name: auto
+# TODO: 
+# 3) create dataset with random rotations augmentation
+# When training,
+# 4) read DDIM paper https://arxiv.org/pdf/2010.02502.pdf
+# 5) read up on loss scaling and bf16
+# 6) watch vid from 
+# Architecture
+encoder_type: vit_b_enc
+decoder_type: unet_patched
+input_size_min: 512
+input_size_max: 512
+resolution_step: 0 # for varying image resolutions
+patch_size: 16 # encoder ViT patch size
+patch_size_dec: 4 # Patched UNet decoder patch size
+post_mlp: True # tanh MLP before quantizer, see ViT-VQGAN paper
+
+# Quantizer
+codebook_size: 8192
+latent_dim: 32
+norm_codes: True
+codebook_weight: 1.0
+quantizer_type: lucid
+coef_ema_dead_code: 32.0
+code_replacement_policy: batch_random
+commitment_weight: 1.0
+quantizer_ema_decay: 0.99
+kmeans_init: False
+
+# Diffusion
+num_train_timesteps: 1000 # number of diffusion steps during training
+prediction_type: sample # diffusion target
+beta_schedule: linear # noise schedule
+cls_free_guidance_dropout: 0.0 # How often to drop out the conditioning
+masked_cfg: False # Randomly mask out the tokens when using conditioning dropout
+clip_sample: False # Only for logged images
+loss_fn: smooth_l1
+resolution_cond: False
+eval_res_cond: 512
+
+# Train
+dtype: bf16 # fp32, fp16 or bf16
+epochs: 100
+opt: adamw
+opt_betas: [0.9, 0.99]
+blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
+warmup_lr: 0.000001 # 1e-6
+min_lr: 0.
+warmup_epochs: 50
+batch_size: 128 # per GPU
+use_random_rotations: True
+mask_value: -9999.
+clip_grad: 1.0
+model_ema: True
+model_ema_decay: 0.9999
+model_ema_update_freq: 1
+find_unused_params: True
+save_ckpt_freq: 10
+
+# Eval
+step_eval: True
+epoch_eval: False
+eval_freq: 5000
+eval_metrics_freq: 5000
+eval_image_log_freq: 50000
+num_eval_metrics_samples: 50000 # Number of samples to use for evaluating image metrics during training.
+num_logged_images: 100
+eval_noise_schedule: DDIMScheduler
+num_eval_timesteps: 50
+input_size_eval: 512
+
+# Data
+domain: depth
+data_path: '/data/million-case/train/dem_topo'
+eval_data_path: '/data/million-case/eval/dem_topo'
+
+# Logging
+log_wandb: True # Set to True to log to Weights & Biases
+wandb_project: 'sarformer'
+wandb_entity: 'sarformer'
+wandb_run_name: auto
+output_dir: 'output/depth_tokenizer'
+log_codebook_usage: True
+
+# Misc.
+device: "cuda"
+num_workers: 10 # the default
