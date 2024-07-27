@@ -470,12 +470,12 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--model_ema_update_freq", type=int, default=1, help="")
 
     # Augmentation parameters
-    # parser.add_argument(
-    #     "--hflip",
-    #     type=float,
-    #     default=0.5,
-    #     help="Probability of horizontal flip (default: %(default)s)",
-    # )
+    parser.add_argument(
+        "--hflip",
+        type=float,
+        default=0.5,
+        help="Probability of horizontal flip (default: %(default)s)",
+    )
 
     # Dataset parameters
     parser.add_argument(
@@ -498,13 +498,13 @@ def get_args() -> argparse.Namespace:
     parser.add_argument(
         "--standardize_surface_normals", default=False, action="store_true"
     )
-    # parser.add_argument(
-    #     "--min_crop_scale",
-    #     default=0.8,
-    #     type=float,
-    #     help="Minimum crop scale for random data augmentation (default: %(default)s)",
-    # )
-    parser.add_argument(  # TODO
+    parser.add_argument(
+        "--min_crop_scale",
+        default=0.8,
+        type=float,
+        help="Minimum crop scale for random data augmentation (default: %(default)s)",
+    )
+    parser.add_argument(
         "--cache_datasets",
         default=False,
         action="store_true",
@@ -617,7 +617,7 @@ def get_args() -> argparse.Namespace:
         type=int,
         help="frequency of evaluation image logging (in iterations)",
     )
-    parser.add_argument(  # TODO: check how this works
+    parser.add_argument(
         "--num_logged_images", default=100, type=int, help="number of images to log"
     )
     parser.add_argument("--eval_only", action="store_true", default=False)
@@ -664,7 +664,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem", help="")
     parser.set_defaults(pin_mem=True)
     parser.add_argument("--find_unused_params", action="store_true")
-    parser.add_argument(  # TODO: see how this works
+    parser.add_argument(
         "--no_find_unused_params", action="store_false", dest="find_unused_params"
     )
     parser.set_defaults(find_unused_params=False)
@@ -696,7 +696,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--show_user_warnings", default=False, action="store_true")
 
     # Distributed training parameters
-    parser.add_argument(  # TODO: look into this
+    parser.add_argument(
         "--world_size", default=1, type=int, help="number of distributed processes"
     )
     parser.add_argument("--local_rank", default=-1, type=int)
@@ -845,16 +845,15 @@ def main(args: argparse.Namespace) -> None:
     args.input_size = (
         args.input_size_max
     )  # For multi-resolution training, load the largest resolution and downsample accordingly
+    image_augmenter_train = RandomCropImageAugmenter(
+        target_size=args.input_size,
+        main_domain=args.domain,
+        crop_scale=(args.min_crop_scale, 1.0),
+    )
 
-    # image_augmenter_train = RandomCropImageAugmenter(
-    #     target_size=args.input_size,
-    #     main_domain=args.domain,
-    #     crop_scale=(args.min_crop_scale, 1.0),
-    # )
-    # TODO: create random rotation augmentor
-    image_augmenter_train = None
-
-    # MODALITY_TRANSFORMS_DIVAE['normal'] = NormalTransform(standardize_surface_normals=args.standardize_surface_normals)
+    MODALITY_TRANSFORMS_DIVAE["normal"] = NormalTransform(
+        standardize_surface_normals=args.standardize_surface_normals
+    )
     MODALITY_TRANSFORMS_DIVAE["rgb"] = RGBTransform(
         imagenet_default_mean_and_std=args.imagenet_default_mean_and_std
     )
@@ -954,10 +953,9 @@ def main(args: argparse.Namespace) -> None:
         )
 
     if args.eval_data_path:
-        # image_augmenter_val = CenterCropImageAugmenter(
-        #     target_size=args.input_size, main_domain=args.domain
-        # )
-        image_augmenter_val = None
+        image_augmenter_val = CenterCropImageAugmenter(
+            target_size=args.input_size, main_domain=args.domain
+        )
         transforms_val = UnifiedDataTransform(
             transforms_dict=MODALITY_TRANSFORMS_DIVAE,
             image_augmenter=image_augmenter_val,

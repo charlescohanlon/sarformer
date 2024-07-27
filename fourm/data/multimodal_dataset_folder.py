@@ -279,8 +279,9 @@ class MultiModalDatasetFolder(VisionDataset):
         self.modality_transforms = modality_transforms
         self.return_path = return_path
 
-        # classes, class_to_idx = self._find_classes(os.path.join(self.root, list(self.modality_paths.values())[0]))
-        classes, class_to_idx = None, None
+        classes, class_to_idx = self._find_classes(
+            os.path.join(self.root, list(self.modality_paths.values())[0])
+        )
         extensions = UNIFIED_EXTENSIONS if is_valid_file is None else None
 
         samples = {
@@ -365,7 +366,7 @@ class MultiModalDatasetFolder(VisionDataset):
             index (int): Index
 
         Returns:
-            tuple: (sample, target) where target is class_index of the target class.
+            (WRONG, is dict) tuple: (sample, target) where target is class_index of the target class.
         """
         if index in self.cache:
             sample_dict, target = deepcopy(self.cache[index])

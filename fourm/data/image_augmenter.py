@@ -21,8 +21,7 @@ from fourm.utils import to_2tuple
 
 
 class AbstractImageAugmenter(ABC):
-    """Abstract class for image augmenters.
-    """
+    """Abstract class for image augmenters."""
 
     @abstractmethod
     def __call__(self, mod_dict, crop_settings):
@@ -31,7 +30,14 @@ class AbstractImageAugmenter(ABC):
 
 class RandomCropImageAugmenter(AbstractImageAugmenter):
 
-    def __init__(self, target_size=224, hflip=0.5, crop_scale=(0.2, 1.0), crop_ratio=(0.75, 1.3333), main_domain='rgb'):
+    def __init__(
+        self,
+        target_size=224,
+        hflip=0.5,
+        crop_scale=(0.2, 1.0),
+        crop_ratio=(0.75, 1.3333),
+        main_domain="rgb",
+    ):
 
         self.target_size = to_2tuple(target_size)
         self.hflip = hflip
@@ -42,9 +48,15 @@ class RandomCropImageAugmenter(AbstractImageAugmenter):
     def __call__(self, mod_dict, crop_settings):
 
         if crop_settings is not None:
-            raise ValueError("Crop settings are provided but not used by this augmenter.")
+            raise ValueError(
+                "Crop settings are provided but not used by this augmenter."
+            )
 
-        image = mod_dict[self.main_domain] if self.main_domain is not None else mod_dict[list(mod_dict.keys())[0]]
+        image = (
+            mod_dict[self.main_domain]
+            if self.main_domain is not None
+            else mod_dict[list(mod_dict.keys())[0]]
+        )
         # With torchvision 0.13+, can also be: orig_size = TF.get_dimensions(image)
         orig_width, orig_height = image.size
         orig_size = (orig_height, orig_width)
@@ -56,12 +68,15 @@ class RandomCropImageAugmenter(AbstractImageAugmenter):
         flip = random.random() < self.hflip
         rand_aug_idx = None
 
-        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx
+        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx, None
 
-class NoImageAugmenter(AbstractImageAugmenter): # this is for non-image modalities like poses where we don't do any augs, e.g. during tokenization 
 
-    def __init__(self, no_aug=True, main_domain='human_poses'):
-        self.target_size = None #to_2tuple(target_size)
+class NoImageAugmenter(
+    AbstractImageAugmenter
+):  # this is for non-image modalities like poses where we don't do any augs, e.g. during tokenization
+
+    def __init__(self, no_aug=True, main_domain="human_poses"):
+        self.target_size = None  # to_2tuple(target_size)
         self.no_aug = no_aug
         self.main_domain = main_domain
 
@@ -69,23 +84,28 @@ class NoImageAugmenter(AbstractImageAugmenter): # this is for non-image modaliti
         # # With torchvision 0.13+, can also be: orig_size = TF.get_dimensions(image)
         orig_size = (224, 224)
 
-        rand_aug_idx = 0 
-        top, left, h, w, flip = 0, 0, 224, 224, 0 
+        rand_aug_idx = 0
+        top, left, h, w, flip = 0, 0, 224, 224, 0
         crop_coords = (top, left, h, w)
 
-        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx
+        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx, None
+
 
 class PreTokenizedImageAugmenter(AbstractImageAugmenter):
 
-    def __init__(self, target_size, no_aug=False, main_domain='rgb'):
+    def __init__(self, target_size, no_aug=False, main_domain="rgb"):
         self.target_size = to_2tuple(target_size)
         self.no_aug = no_aug
         self.main_domain = main_domain
 
     def __call__(self, mod_dict, crop_settings):
         # With torchvision 0.13+, can also be: orig_size = TF.get_dimensions(image)
-        if self.main_domain in mod_dict and 'tok' not in self.main_domain:
-            image = mod_dict[self.main_domain] if self.main_domain is not None else mod_dict[list(mod_dict.keys())[0]]
+        if self.main_domain in mod_dict and "tok" not in self.main_domain:
+            image = (
+                mod_dict[self.main_domain]
+                if self.main_domain is not None
+                else mod_dict[list(mod_dict.keys())[0]]
+            )
             orig_width, orig_height = image.size
             orig_size = (orig_height, orig_width)
         else:
@@ -95,17 +115,21 @@ class PreTokenizedImageAugmenter(AbstractImageAugmenter):
         top, left, h, w, flip = crop_settings[rand_aug_idx]
         crop_coords = (top, left, h, w)
 
-        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx
+        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx, None
 
 
 class CenterCropImageAugmenter(AbstractImageAugmenter):
-    def __init__(self, target_size, hflip=0.0, main_domain='rgb'):
+    def __init__(self, target_size, hflip=0.0, main_domain="rgb"):
         self.target_size = to_2tuple(target_size)
         self.hflip = hflip
         self.main_domain = main_domain
 
     def __call__(self, mod_dict, crop_settings=None):
-        image = mod_dict[self.main_domain] if self.main_domain is not None else mod_dict[list(mod_dict.keys())[0]]
+        image = (
+            mod_dict[self.main_domain]
+            if self.main_domain is not None
+            else mod_dict[list(mod_dict.keys())[0]]
+        )
         orig_width, orig_height = image.size
         orig_size = (orig_height, orig_width)
 
@@ -122,17 +146,21 @@ class CenterCropImageAugmenter(AbstractImageAugmenter):
         flip = random.random() < self.hflip
         rand_aug_idx = None
 
-        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx
+        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx, None
 
 
 class PaddingImageAugmenter(AbstractImageAugmenter):
-    def __init__(self, target_size, hflip=0.0, main_domain='rgb'):
+    def __init__(self, target_size, hflip=0.0, main_domain="rgb"):
         self.target_size = to_2tuple(target_size)
         self.hflip = hflip
         self.main_domain = main_domain
 
     def __call__(self, mod_dict, crop_settings):
-        image = mod_dict[self.main_domain] if self.main_domain is not None else mod_dict[list(mod_dict.keys())[0]]
+        image = (
+            mod_dict[self.main_domain]
+            if self.main_domain is not None
+            else mod_dict[list(mod_dict.keys())[0]]
+        )
         orig_width, orig_height = image.size
         orig_size = (orig_height, orig_width)
 
@@ -142,11 +170,11 @@ class PaddingImageAugmenter(AbstractImageAugmenter):
         flip = random.random() < self.hflip
         rand_aug_idx = None
 
-        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx
+        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx, None
 
 
 class ScaleJitteringImageAugmenter(AbstractImageAugmenter):
-    def __init__(self, target_size, hflip=0.0, scale=(0.1, 2.0), main_domain='rgb'):
+    def __init__(self, target_size, hflip=0.0, scale=(0.1, 2.0), main_domain="rgb"):
         self.target_size = to_2tuple(target_size)
         self.hflip = hflip
         self.scale = scale
@@ -164,9 +192,15 @@ class ScaleJitteringImageAugmenter(AbstractImageAugmenter):
     def __call__(self, mod_dict, crop_settings):
 
         if crop_settings is not None:
-            raise ValueError("Crop settings are provided but not used by this augmenter.")
+            raise ValueError(
+                "Crop settings are provided but not used by this augmenter."
+            )
 
-        image = mod_dict[self.main_domain] if self.main_domain is not None else mod_dict[list(mod_dict.keys())[0]]
+        image = (
+            mod_dict[self.main_domain]
+            if self.main_domain is not None
+            else mod_dict[list(mod_dict.keys())[0]]
+        )
         # With torchvision 0.13+, can also be: orig_size = TF.get_dimensions(image)
         orig_width, orig_height = image.size
         orig_size = (orig_height, orig_width)
@@ -175,7 +209,7 @@ class ScaleJitteringImageAugmenter(AbstractImageAugmenter):
         flip = random.random() < self.hflip
         rand_aug_idx = None
 
-        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx
+        return crop_coords, flip, orig_size, self.target_size, rand_aug_idx, None
 
 
 class EmptyAugmenter(AbstractImageAugmenter):
@@ -183,4 +217,24 @@ class EmptyAugmenter(AbstractImageAugmenter):
         pass
 
     def __call__(self, mod_dict, crop_settings):
-        return None, None, None, None, None
+        return None, None, None, None, None, None
+
+
+class RandomRotationImageAugmenter(AbstractImageAugmenter):
+    def __init__(self, near_orthogonal=False):
+        self.near_orthogonal = near_orthogonal
+
+    def get_rotation_angle(self):
+        # rotate image near orthogonally i.e., close to a multiple of 90 degrees
+        if self.near_orthogonal:
+            rotation = np.random.choice([0, 90, 180, 270])
+            offset = np.random.rand()
+            angle = rotation + offset
+        else:
+            angle = np.random.rand() * 360
+
+        return angle
+
+    def __call__(self, mod_dict, crop_settings):
+        rotation_angle = self.get_rotation_angle()
+        return None, None, None, None, None, rotation_angle

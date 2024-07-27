@@ -43,7 +43,7 @@ from fourm.utils.data_constants import (
 
 # The @-symbol is used to specify the resolution of a modality. Syntax: modality@resolution
 def get_transform_key(mod_name):
-    return mod_name.split("@")[0]
+    return mod_name.split("@")[0] if "@" in mod_name else mod_name
 
 
 def get_transform_resolution(mod_name, default_resolution, to_tuple=True):
@@ -117,8 +117,8 @@ class UnifiedDataTransform(object):
             dict: Transformed dict of modalities
         """
 
-        crop_coords, flip, orig_size, target_size, rand_aug_idx = self.image_augmenter(
-            mod_dict, crop_settings
+        crop_coords, flip, orig_size, target_size, rand_aug_idx, rotation_angle = (
+            self.image_augmenter(mod_dict, crop_settings)
         )
 
         mod_dict = {
@@ -126,6 +126,7 @@ class UnifiedDataTransform(object):
                 v,
                 crop_coords=crop_coords,
                 flip=flip,
+                rotation_angle=rotation_angle,
                 orig_size=orig_size,
                 target_size=get_transform_resolution(k, target_size),
                 rand_aug_idx=rand_aug_idx,
@@ -187,6 +188,7 @@ class AbstractTransform(ABC):
         v,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -222,20 +224,6 @@ class ImageTransform(AbstractTransform):
         return img
 
     @staticmethod
-    def image_random_rotate(img: Image, rotate: bool, fill_val: int):
-        """Rotate an image a random number of degrees
-
-        :param img: Image to rotate
-        :param rotate: Whether to rotate the image
-        :param fill_val: The value to fill empty regions of the image after rotation
-        :return: Rotated image (if rotate = True)
-        """
-        if rotate:
-            angle = np.random.random() * 360
-            img = TF.rotate(img, angle, fill=fill_val)
-        return img
-
-    @staticmethod
     def image_crop_and_resize(
         img: Image, crop_coords: Tuple, target_size: Tuple, resample_mode: str = None
     ):
@@ -252,6 +240,22 @@ class ImageTransform(AbstractTransform):
         img = TF.crop(img, top, left, h, w)
         resample_mode = get_pil_resample_mode(resample_mode)
         img = img.resize((resize_height, resize_width), resample=resample_mode)
+        return img
+
+    @staticmethod
+    def image_rotate(
+        img: Image, angle: float, fill_val: float, resample_mode: str = None
+    ):
+        """Rotate an image
+
+        :param img: Image to rotate
+        :param angle: Angle of the rotation
+        :param fill_val: Value to fill the area outside the transformed image
+        :return: Rotated image
+        """
+
+        resample_mode = get_pil_resample_mode(resample_mode)
+        img = TF.rotate(img, angle=angle, interpolation=resample_mode, fill=fill_val)
         return img
 
 
@@ -321,6 +325,7 @@ class RGBTransform(ImageTransform):
         img,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -339,11 +344,14 @@ class RGBTransform(ImageTransform):
 
 class DepthTransform(ImageTransform):
 
-    def __init__(self, standardize_depth=True):
+    def __init__(self, standardize_depth=True, missing_data_value=-9999.0):
         self.standardize_depth = standardize_depth
+        self.missing_data_value = missing_data_value
 
     def depth_to_tensor(self, img):
-        img = torch.Tensor(img / (2**16 - 1.0))
+        # Use to normalize (I guess?)
+        # img = torch.Tensor(img / (2**16 - 1.0))
+        img = torch.Tensor(img)
         img = img.unsqueeze(0)  # 1 x H x W
         if self.standardize_depth:
             img = self.truncated_depth_standardization(img)
@@ -378,15 +386,15 @@ class DepthTransform(ImageTransform):
         img,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_crop_and_resize(
-            img, crop_coords, target_size, resample_mode=resample_mode
+        img = self.image_rotate(
+            img, rotation_angle, self.missing_data_value, resample_mode
         )
-        img = self.image_hflip(img, flip)
         return img
 
     def postprocess(self, sample):
@@ -435,6 +443,7 @@ class NormalTransform(ImageTransform):
         img,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -508,6 +517,7 @@ class SemsegTransform(ImageTransform):
         img,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -706,6 +716,7 @@ class SAMInstanceTransform(AbstractTransform):
         v,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -759,22 +770,23 @@ class MaskTransform(ImageTransform):
     def preprocess(self, sample):
         return sample
 
-    # def image_augment(
-    #     self,
-    #     img,
-    #     crop_coords: Tuple,
-    #     flip: bool,
-    #     orig_size: Tuple,
-    #     target_size: Tuple,
-    #     rand_aug_idx: Optional[int],
-    #     resample_mode: str = None,
-    # ):
-    #     # Override resampling mode to 'nearest' for masks
-    #     img = self.image_crop_and_resize(
-    #         img, crop_coords, target_size, resample_mode="nearest"
-    #     )
-    #     img = self.image_hflip(img, flip)
-    #     return img
+    def image_augment(
+        self,
+        img,
+        crop_coords: Tuple,
+        flip: bool,
+        rotation_angle: float,
+        orig_size: Tuple,
+        target_size: Tuple,
+        rand_aug_idx: Optional[int],
+        resample_mode: str = None,
+    ):
+        # Override resampling mode to 'nearest' for masks
+        img = self.image_crop_and_resize(
+            img, crop_coords, target_size, resample_mode="nearest"
+        )
+        img = self.image_hflip(img, flip)
+        return img
 
     def postprocess(self, sample):
         sample = self.mask_to_tensor(sample)
@@ -798,6 +810,7 @@ class TokTransform(AbstractTransform):
         v,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -966,6 +979,7 @@ class DetectionTransform(AbstractTransform):
         bboxes: List[Tuple],
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
@@ -1009,6 +1023,7 @@ class CaptionTransform(AbstractTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -1054,6 +1069,7 @@ class CaptionEmbTransform(AbstractTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -1258,6 +1274,7 @@ class MetadataTransform(AbstractTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
@@ -1470,6 +1487,7 @@ class HumanPoseTransform(AbstractTransform):
         humanposes: List[Tuple],
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
@@ -1540,6 +1558,7 @@ class ColorPaletteTransform(AbstractTransform):
         palettes: List[Tuple],
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
@@ -1658,6 +1677,7 @@ class SAMInstanceTokTransform(AbstractTransform):
         v,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -1693,6 +1713,7 @@ class CropSettingsTransform(AbstractTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -1721,6 +1742,7 @@ class IdentityTransform(AbstractTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -1751,6 +1773,7 @@ class JSONTransform(AbstractTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
+        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],

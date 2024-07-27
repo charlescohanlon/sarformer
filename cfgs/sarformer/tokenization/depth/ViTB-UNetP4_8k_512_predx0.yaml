@@ -1,10 +1,5 @@
 run_name: auto
-# TODO: 
-# 3) create dataset with random rotations augmentation
-# When training,
-# 4) read DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-# 5) read up on loss scaling and bf16
-# 6) watch vid from 
+
 # Architecture
 encoder_type: vit_b_enc
 decoder_type: unet_patched
