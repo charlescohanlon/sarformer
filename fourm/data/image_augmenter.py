@@ -228,7 +228,7 @@ class RandomRotationImageAugmenter(AbstractImageAugmenter):
         # rotate image near orthogonally i.e., close to a multiple of 90 degrees
         if self.near_orthogonal:
             rotation = np.random.choice([0, 90, 180, 270])
-            offset = np.random.rand()
+            offset = np.random.normal(scale=10)  # the std here is arbitrary
             angle = rotation + offset
         else:
             angle = np.random.rand() * 360

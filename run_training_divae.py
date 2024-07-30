@@ -13,6 +13,8 @@
 # limitations under the License.
 import sys
 
+from fourm.data.image_augmenter import EmptyAugmenter, RandomRotationImageAugmenter
+
 sys.path.insert(0, "..")
 import argparse
 import datetime
@@ -73,6 +75,8 @@ from fourm.vq.vq_utils import compute_codebook_usage
 
 from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_DIVAE
 from fourm.data.modality_transforms import (
+    DepthTransform,
+    MaskTransform,
     UnifiedDataTransform,
     RGBTransform,
     NormalTransform,
@@ -244,6 +248,24 @@ def get_args() -> argparse.Namespace:
         type=float,
         help='Quantizer commitment weight, aka "beta" (default: %(default)s)',
     )
+    parser.add_argument(
+        "--orthogonal_reg_weight",
+        default=1.0,
+        type=float,
+        help="Quantizer orthogonal regularization weight (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--orthogonal_reg_active_codes_only",
+        default=False,
+        action="store_true",
+        help="Whether to only consider the codes selected for a given input in the orthogonal regularization (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--orthogonal_reg_max_codes",
+        default=None,
+        type=int,
+        help="Max number of codes to consider in the orthogonal regularization (None for no limit) (default: %(default)s)",
+    )
     parser.add_argument("--kmeans_init", action="store_true")
     parser.add_argument("--no_kmeans_init", action="store_false", dest="kmeans_init")
     parser.set_defaults(kmeans_init=False)
@@ -413,8 +435,7 @@ def get_args() -> argparse.Namespace:
         "--weight_decay_end",
         type=float,
         default=None,
-        help="""Final value of the
-        weight decay. We use a cosine schedule for WD.  (Set the same value as args.weight_decay to keep weight decay unchanged)""",
+        help="Final value of the weight decay. We use a cosine schedule for WD. (Set the same value as args.weight_decay to keep weight decay unchanged)",
     )
 
     parser.add_argument(
@@ -476,6 +497,18 @@ def get_args() -> argparse.Namespace:
         default=0.5,
         help="Probability of horizontal flip (default: %(default)s)",
     )
+    parser.add_argument(
+        "--use_random_rotations",
+        default=False,
+        action="store_true",
+        help="Use random rotation augmentation on the image modalities (rgb and depth)",
+    )
+    parser.add_argument(
+        "--near_orthogonal",
+        default=False,
+        action="store_true",
+        help="Use near orthogonal random rotation augmentation, i.e., rotate images near a multiple of 90 degrees.",
+    )
 
     # Dataset parameters
     parser.add_argument(
@@ -494,6 +527,12 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--eval_data_path", default=None, type=str, help="dataset path")
     parser.add_argument(
         "--imagenet_default_mean_and_std", default=False, action="store_true"
+    )
+    parser.add_argument(
+        "--mean_and_std",
+        default="naip",
+        type=str,
+        help="The mean and std to use to standardize image values",
     )
     parser.add_argument(
         "--standardize_surface_normals", default=False, action="store_true"
@@ -794,6 +833,9 @@ def get_model(args: argparse.Namespace, device: Union[torch.device, str]) -> DiV
         conditioning=args.conditioning,
         dec_transformer_dropout=args.dec_transformer_dropout,
         zero_terminal_snr=args.zero_terminal_snr,
+        orthogonal_reg_weight=args.orthogonal_reg_weight,
+        orthogonal_reg_active_codes_only=args.orthogonal_reg_active_codes_only,
+        orthogonal_reg_max_codes=args.orthogonal_reg_max_codes,
     )
 
     return model.to(device)
@@ -831,10 +873,6 @@ def main(args: argparse.Namespace) -> None:
 
     args.eval_res_cond = to_2tuple(args.eval_res_cond) if args.resolution_cond else None
 
-    args.all_domains = (
-        [args.domain] if args.mask_value is None else [args.domain, "mask_valid"]
-    )
-
     modality_info = setup_modality_info(args)
     modality_paths = {
         mod: modality_info[mod]["path"]
@@ -842,20 +880,35 @@ def main(args: argparse.Namespace) -> None:
         if modality_info[mod].get("path", None) is not None
     }
 
-    args.input_size = (
-        args.input_size_max
-    )  # For multi-resolution training, load the largest resolution and downsample accordingly
-    image_augmenter_train = RandomCropImageAugmenter(
-        target_size=args.input_size,
-        main_domain=args.domain,
-        crop_scale=(args.min_crop_scale, 1.0),
+    # For multi-resolution training, load the largest resolution and downsample accordingly
+    args.input_size = args.input_size_max
+
+    args.all_domains = (
+        [args.domain] if args.mask_value is None else [args.domain, "mask_valid"]
     )
 
-    MODALITY_TRANSFORMS_DIVAE["normal"] = NormalTransform(
-        standardize_surface_normals=args.standardize_surface_normals
-    )
-    MODALITY_TRANSFORMS_DIVAE["rgb"] = RGBTransform(
-        imagenet_default_mean_and_std=args.imagenet_default_mean_and_std
+    # these override transforms in MODALITY_TRANFORMS_DIVAE from modality_info.py
+    # transform classes are used to both load (or create) and augment the data
+    if args.domain == "rgb":
+        MODALITY_TRANSFORMS_DIVAE["rgb"] = RGBTransform(
+            mean_and_std=args.mean_and_std,
+            color_jitter=False,
+            # fills the empty regions after the rotation with this
+            no_data_value=modality_info["rgb"]["no_data_value"],
+        )
+    elif args.domain == "depth":
+        MODALITY_TRANSFORMS_DIVAE["depth"] = DepthTransform(
+            standardize_depth=False,
+            # fills the empty regions after the rotation with this
+            no_data_value=modality_info["depth"]["no_data_value"],
+        )
+    else:
+        raise ValueError(f"This program does not support domain %{args.domain}.")
+
+    image_augmenter_train = (
+        RandomRotationImageAugmenter(near_orthogonal=args.near_orthogonal)
+        if args.use_random_rotations
+        else EmptyAugmenter()
     )
 
     if args.use_wds:
@@ -927,6 +980,7 @@ def main(args: argparse.Namespace) -> None:
             modalities=args.all_domains,
             modality_paths=modality_paths,
             modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_info=modality_info,
             transform=transforms_train,
             cache=args.cache_datasets,
         )
@@ -953,9 +1007,12 @@ def main(args: argparse.Namespace) -> None:
         )
 
     if args.eval_data_path:
-        image_augmenter_val = CenterCropImageAugmenter(
-            target_size=args.input_size, main_domain=args.domain
+        image_augmenter_val = (
+            RandomRotationImageAugmenter(near_orthogonal=args.near_orthogonal)
+            if args.use_random_rotations
+            else EmptyAugmenter()
         )
+
         transforms_val = UnifiedDataTransform(
             transforms_dict=MODALITY_TRANSFORMS_DIVAE,
             image_augmenter=image_augmenter_val,
@@ -967,6 +1024,7 @@ def main(args: argparse.Namespace) -> None:
             modalities=args.all_domains,
             modality_paths=modality_paths,
             modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_info=modality_info,
             transform=transforms_val,
             cache=args.cache_datasets,
         )
@@ -1003,6 +1061,7 @@ def main(args: argparse.Namespace) -> None:
                 modalities=args.all_domains,
                 modality_paths=modality_paths,
                 modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+                modality_info=modality_info,
                 transform=transforms_val,
                 pre_shuffle=True,
                 max_samples=args.num_eval_metrics_samples,
@@ -1045,6 +1104,7 @@ def main(args: argparse.Namespace) -> None:
                 modalities=args.all_domains,
                 modality_paths=modality_paths,
                 modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+                modality_info=modality_info,
                 transform=transforms_val,
                 pre_shuffle=True,
                 max_samples=args.num_logged_images,
@@ -1406,9 +1466,8 @@ def mask_out_samples(
         clean_inputs[
             ~repeat(mask_valid, "b 1 h w -> b n h w", n=clean_inputs.shape[1])
         ] = mask_value
-        mask_valid = (
-            mask_valid.float() * 2 - 1
-        )  # Valid regions -> 1, Masked-out regions -> -1
+        # Valid regions -> 1, Masked-out regions -> -1
+        mask_valid = mask_valid.float() * 2 - 1
         clean_inputs = torch.cat([clean_inputs, mask_valid], dim=1)
     return clean_inputs
 

@@ -19,6 +19,7 @@ from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import numpy as np
+import torch
 from torchvision.datasets.vision import VisionDataset
 
 from fourm.data.modality_transforms import AbstractTransform, get_transform_key
@@ -259,6 +260,7 @@ class MultiModalDatasetFolder(VisionDataset):
         modalities: List[str],
         modality_paths: Dict[str, str],
         modality_transforms: Dict[str, AbstractTransform],
+        modality_info: Dict,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
         is_valid_file: Optional[Callable[[str], bool]] = None,
@@ -271,12 +273,14 @@ class MultiModalDatasetFolder(VisionDataset):
             root, transform=transform, target_transform=target_transform
         )
         self.modalities = modalities
+        self.use_mask = "mask_valid" in modalities
         # If modality_paths is not provided, use the default paths
         self.modality_paths = modality_paths
         for mod in self.modalities:
             if mod not in self.modality_paths:
                 modality_paths[mod] = mod
         self.modality_transforms = modality_transforms
+        self.modality_info = modality_info
         self.return_path = return_path
 
         classes, class_to_idx = self._find_classes(
@@ -360,25 +364,51 @@ class MultiModalDatasetFolder(VisionDataset):
         file_name = file_name.split(".")[0]
         return class_id, file_name
 
+    def _compute_no_data_mask(self, no_data_mods, sample_dict):
+        channel_dim = 0
+        mask = torch.zeros_like(sample_dict[no_data_mods[0]], dtype=torch.bool).all(
+            dim=channel_dim, keepdim=True
+        )
+        for mod in no_data_mods:
+            sample = sample_dict[mod]
+            assert sample.shape[channel_dim] == self.modality_info[mod]["num_channels"]
+            no_data_value = self.modality_info[mod]["no_data_value"]
+            new_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
+            mask = mask.logical_or(new_mask)
+        return mask
+
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
         Args:
             index (int): Index
 
         Returns:
-            (WRONG, is dict) tuple: (sample, target) where target is class_index of the target class.
+            # NOTE: this is wrong, it's a dict with potentially more keys than just sample and
+            # target, but the code is pretty self-explanatory
+            tuple: (sample, target) where target is class_index of the target class.
         """
+        # BUG?: self.cache is never updated
         if index in self.cache:
             sample_dict, target = deepcopy(self.cache[index])
         else:
             sample_dict = {}
+            potential_missing_data_mods = []
             for mod in self.modalities:
+                if mod == "mask_valid":
+                    # We don't use the mask transform to load the mask
+                    continue
+
+                # BUG?: target changes in loop
                 path, target = self.samples[mod][index]
                 sample = self.modality_transforms[get_transform_key(mod)].load(path)
                 sample_dict[mod] = sample
+
+                if "no_data_value" in self.modality_info[mod]:
+                    potential_missing_data_mods.append(mod)
             # self.cache[index] = deepcopy((sample_dict, target))
 
         if self.transform is not None:
+            # Applies the UnifiedDataTransform which augments the data (as well as pre and post processing)
             sample_dict = self.transform(sample_dict)
         if self.target_transform is not None:
             target = self.target_transform(target)
@@ -389,6 +419,15 @@ class MultiModalDatasetFolder(VisionDataset):
             class_id, file_name = self.get_class_and_file(path)
             sample_dict["class_id"] = class_id
             sample_dict["file_name"] = file_name
+
+        if len(potential_missing_data_mods) > 0:
+            if not self.use_mask:
+                raise ValueError(
+                    "No mask_value is set but some modalities require a mask"
+                )
+            sample_dict["mask_valid"] = self._compute_no_data_mask(
+                potential_missing_data_mods, sample_dict
+            )
 
         return sample_dict
 

@@ -15,7 +15,7 @@ import gzip
 import json
 import random
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict
+from typing import Optional, Tuple, List, Dict, Union
 from abc import ABC, abstractmethod
 
 from PIL import Image
@@ -38,6 +38,8 @@ from fourm.utils.data_constants import (
     IMAGENET_INCEPTION_STD,
     SEG_IGNORE_INDEX,
     PAD_MASK_VALUE,
+    NAIP_MEAN,
+    NAIP_STD,
 )
 
 
@@ -244,13 +246,17 @@ class ImageTransform(AbstractTransform):
 
     @staticmethod
     def image_rotate(
-        img: Image, angle: float, fill_val: float, resample_mode: str = None
+        img: Union[Image.Image, torch.Tensor],
+        angle: float,
+        fill_val: Union[float, bool],
+        resample_mode: str = None,
     ):
         """Rotate an image
 
         :param img: Image to rotate
         :param angle: Angle of the rotation
         :param fill_val: Value to fill the area outside the transformed image
+        :param resample_mode: mode of interpolation
         :return: Rotated image
         """
 
@@ -263,22 +269,26 @@ class RGBTransform(ImageTransform):
 
     def __init__(
         self,
-        imagenet_default_mean_and_std=True,
+        mean_and_std="naip",
         color_jitter=False,
         color_jitter_strength=0.5,
+        no_data_value=0,
     ):
-        self.rgb_mean = (
-            IMAGENET_INCEPTION_MEAN
-            if not imagenet_default_mean_and_std
-            else IMAGENET_DEFAULT_MEAN
-        )
-        self.rgb_std = (
-            IMAGENET_INCEPTION_STD
-            if not imagenet_default_mean_and_std
-            else IMAGENET_DEFAULT_STD
-        )
+        if mean_and_std == "naip":
+            self.rgb_mean = NAIP_MEAN
+            self.rgb_std = NAIP_STD
+        elif mean_and_std == "imagenet_default":
+            self.rgb_mean = IMAGENET_DEFAULT_MEAN
+            self.rgb_std = IMAGENET_DEFAULT_STD
+        elif mean_and_std == "imagenet_inception":
+            self.rgb_mean = IMAGENET_INCEPTION_MEAN
+            self.rgb_std = IMAGENET_INCEPTION_STD
+        else:
+            raise ValueError(f"Invalid mean_and_std: {mean_and_std}")
+
         self.color_jitter = color_jitter
         self.color_jitter_transform = self.random_color_jitter(color_jitter_strength)
+        self.no_data_value = no_data_value
 
     def random_color_jitter(self, strength=0.5):
         # Color Jitter from Pix2Seq and SimCLR
@@ -331,10 +341,7 @@ class RGBTransform(ImageTransform):
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_crop_and_resize(
-            img, crop_coords, target_size, resample_mode=resample_mode
-        )
-        img = self.image_hflip(img, flip)
+        img = self.image_rotate(img, rotation_angle, self.no_data_value, resample_mode)
         return img
 
     def postprocess(self, sample):
@@ -344,12 +351,12 @@ class RGBTransform(ImageTransform):
 
 class DepthTransform(ImageTransform):
 
-    def __init__(self, standardize_depth=True, missing_data_value=-9999.0):
+    def __init__(self, standardize_depth=True, no_data_value=-9999.0):
         self.standardize_depth = standardize_depth
-        self.missing_data_value = missing_data_value
+        self.no_data_value = no_data_value
 
     def depth_to_tensor(self, img):
-        # Use to normalize (I guess?)
+        # Used to normalize (I guess?)
         # img = torch.Tensor(img / (2**16 - 1.0))
         img = torch.Tensor(img)
         img = img.unsqueeze(0)  # 1 x H x W
@@ -392,9 +399,7 @@ class DepthTransform(ImageTransform):
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_rotate(
-            img, rotation_angle, self.missing_data_value, resample_mode
-        )
+        img = self.image_rotate(img, rotation_angle, self.no_data_value, resample_mode)
         return img
 
     def postprocess(self, sample):
@@ -739,6 +744,7 @@ class SAMInstanceTransform(AbstractTransform):
         }
 
 
+# NOTE: We don't use this. We generate them in the MultiModalDatasetFolder instead of loading them
 class MaskTransform(ImageTransform):
 
     def __init__(self, mask_pool_size=1):

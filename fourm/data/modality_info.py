@@ -61,6 +61,7 @@ MODALITY_INFO = {
         "num_channels": 3,
         "id": generate_uint15_hash("rgb"),
         "path": "rgb",
+        "no_data_value": 0,
     },
     "caption": {
         "vocab_size": 30_000,
@@ -116,6 +117,7 @@ MODALITY_INFO = {
         "type": "img",
         "num_channels": 1,
         "id": generate_uint15_hash("depth"),
+        "no_data_value": -9999.0,
     },
     "tok_normal@224": {
         "input_size": 224,
