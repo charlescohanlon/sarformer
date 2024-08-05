@@ -14,7 +14,8 @@ from .scheduler import cosine_scheduler, constant_scheduler, inverse_sqrt_schedu
 from .optim_factory import create_optimizer
 from .timm.registry import model_entrypoint, register_model
 from .timm.transforms import *
-from .timm.transforms_factory import create_transform
+
+# from .timm.transforms_factory import create_transform
 from .tokenizer.text_tokenizer import *
 from .s3_utils import *
 from .run_name import *

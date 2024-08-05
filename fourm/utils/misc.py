@@ -17,10 +17,10 @@ import collections.abc
 from itertools import repeat
 import torchvision.transforms.functional as TF
 
-from fourm.utils.data_constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+from fourm.utils.data_constants import NAIP_MEAN, NAIP_STD
 
 
-def denormalize(img, mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD):
+def denormalize(img, mean=NAIP_MEAN, std=NAIP_STD):
     """
     Denormalizes an image.
 

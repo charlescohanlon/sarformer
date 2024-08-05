@@ -12,3 +12,5 @@ tokenizer_ckpts/
 *pkl
 *.egg-info
 **.tif
+
+job_scripts/*

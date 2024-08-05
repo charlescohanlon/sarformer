@@ -32,7 +32,7 @@ masked_cfg: False # Randomly mask out the tokens when using conditioning dropout
 clip_sample: True # Only for logged images
 loss_fn: mse
 resolution_cond: False
-eval_res_cond: 512 # TODO: what is this for
+eval_res_cond: None
 
 # Train
 dtype: bf16 # fp32, fp16 or bf16
@@ -44,7 +44,8 @@ warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
 warmup_epochs: 60
 batch_size: 64 # per GPU
-clip_grad: 1.0 # TODO: need this if using bf16?
+clip_grad: None
+skip_grad: None
 model_ema: True
 model_ema_decay: 0.9999
 model_ema_update_freq: 12 # in iterations
@@ -89,5 +90,5 @@ show_user_warnings: True
 
 # Misc.
 device: "cuda"
-num_workers: 16 # should match cpu cores
+num_workers: 16 # should match num of cpu cores planned to use
 cache_datasets: True

@@ -83,6 +83,8 @@ from fourm.data.modality_transforms import (
 )
 from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
 
+from fourm.utils.data_constants import NAIP_MEAN, NAIP_STD
+
 
 def unwrap_model(model: Union[nn.Module, DDP]) -> nn.Module:
     """Retrieves a model from a DDP wrapper, if necessary."""
@@ -2141,7 +2143,7 @@ def eval_metrics(
         sync_on_compute=True,
         compute_on_cpu=compute_on_cpu,
     ).to(device)
-    if domain in ["rgb", "normal"]:
+    if domain in ["rgb"]:
         # All of these metrics expect images in [0, 1]
         fid_metric = FrechetInceptionDistance(
             feature=2048,
@@ -2209,14 +2211,10 @@ def eval_metrics(
             local_tokens.append(tokens.flatten().cpu())
 
         # Convert inputs and outputs to images again
-        if domain in ["rgb", "normal"]:
+        if domain in ["rgb"]:
             # 3-channel domains in [-1,1]
-            gt = denormalize(
-                clean_images[:, :3], mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)
-            )
-            reconst = denormalize(
-                output[:, :3], mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)
-            )
+            gt = denormalize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
+            reconst = denormalize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
         elif domain in ["depth"]:
             # 1-channel per-sample standardized domains
             # TODO: Perform robust per-sample standardization to evaluate shift and scale invariant metrics
