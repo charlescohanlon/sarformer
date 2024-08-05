@@ -459,6 +459,7 @@ MODALITY_INFO = {
         "id": generate_uint15_hash("tok_clip@448"),
         "pretokenized": True,
     },
+    "mask_valid": {},
 }
 
 # Note: @res suffix is ignored for modality transforms

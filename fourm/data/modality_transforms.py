@@ -249,7 +249,7 @@ class ImageTransform(AbstractTransform):
         img: Union[Image.Image, torch.Tensor],
         angle: float,
         fill_val: Union[float, bool],
-        resample_mode: str = None,
+        resample_mode: str = "nearest",
     ):
         """Rotate an image
 
@@ -269,6 +269,7 @@ class RGBTransform(ImageTransform):
 
     def __init__(
         self,
+        imagenet_default_mean_and_std=True,
         mean_and_std="naip",
         color_jitter=False,
         color_jitter_strength=0.5,
@@ -314,6 +315,9 @@ class RGBTransform(ImageTransform):
 
     def rgb_to_tensor(self, img):
         img = TF.to_tensor(img)
+        return img
+
+    def rgb_tensor_norm(self, img):
         img = TF.normalize(img, mean=self.rgb_mean, std=self.rgb_std)
         return img
 

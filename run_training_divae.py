@@ -509,6 +509,12 @@ def get_args() -> argparse.Namespace:
         action="store_true",
         help="Use near orthogonal random rotation augmentation, i.e., rotate images near a multiple of 90 degrees.",
     )
+    parser.add_argument(
+        "--rotation_resample_mode",
+        default="nearest",
+        type=str,
+        help="The interpolation mode to use for the random rotation augmentations (default: %(default)s)",
+    )
 
     # Dataset parameters
     parser.add_argument(
@@ -739,7 +745,8 @@ def get_args() -> argparse.Namespace:
         "--world_size", default=1, type=int, help="number of distributed processes"
     )
     parser.add_argument("--local_rank", default=-1, type=int)
-    parser.add_argument("--dist_on_itp", action="store_true")
+    # "dist_on_itp" doesn't do anything?
+    # parser.add_argument("--dist_on_itp", action="store_true")
     parser.add_argument(
         "--dist_url", default="env://", help="url used to set up distributed training"
     )
@@ -873,6 +880,10 @@ def main(args: argparse.Namespace) -> None:
 
     args.eval_res_cond = to_2tuple(args.eval_res_cond) if args.resolution_cond else None
 
+    args.all_domains = (
+        [args.domain] if args.mask_value is None else [args.domain, "mask_valid"]
+    )
+
     modality_info = setup_modality_info(args)
     modality_paths = {
         mod: modality_info[mod]["path"]
@@ -882,10 +893,6 @@ def main(args: argparse.Namespace) -> None:
 
     # For multi-resolution training, load the largest resolution and downsample accordingly
     args.input_size = args.input_size_max
-
-    args.all_domains = (
-        [args.domain] if args.mask_value is None else [args.domain, "mask_valid"]
-    )
 
     # these override transforms in MODALITY_TRANFORMS_DIVAE from modality_info.py
     # transform classes are used to both load (or create) and augment the data
@@ -973,6 +980,7 @@ def main(args: argparse.Namespace) -> None:
         transforms_train = UnifiedDataTransform(
             transforms_dict=MODALITY_TRANSFORMS_DIVAE,
             image_augmenter=image_augmenter_train,
+            resample_mode=args.rotation_resample_mode,
             add_sizes=args.resolution_cond,
         )
         dataset_train = MultiModalDatasetFolder(
@@ -1016,6 +1024,7 @@ def main(args: argparse.Namespace) -> None:
         transforms_val = UnifiedDataTransform(
             transforms_dict=MODALITY_TRANSFORMS_DIVAE,
             image_augmenter=image_augmenter_val,
+            resample_mode=args.rotation_resample_mode,
             add_sizes=args.resolution_cond,
         )
 

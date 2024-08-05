@@ -5,7 +5,7 @@ encoder_type: vit_b_enc
 decoder_type: unet_patched
 input_size_min: 512
 input_size_max: 512
-resolution_step: 0 # we don't change the image size at any point
+resolution_step: 1 # used as step in range to produce [512, 513)
 patch_size: 16 # encoder ViT patch size
 patch_size_dec: 4 # Patched UNet decoder patch size
 post_mlp: True # tanh MLP before quantizer, see ViT-VQGAN paper
@@ -21,6 +21,7 @@ code_replacement_policy: batch_random
 commitment_weight: 1.0
 quantizer_ema_decay: 0.99
 kmeans_init: False
+orthogonal_reg_weight: 1.0 # just to be explicit
 
 # Diffusion
 num_train_timesteps: 1000 # number of diffusion steps during training
@@ -57,7 +58,7 @@ epoch_eval: False
 eval_freq: 5000
 eval_metrics_freq: 5000
 eval_image_log_freq: 5000
-num_eval_metrics_samples: 50000 # Number of samples to use for evaluating image metrics during training.
+num_eval_metrics_samples: 20000 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 100
 eval_noise_schedule: DDIMScheduler
 num_eval_timesteps: 50
@@ -67,22 +68,24 @@ no_inception: True # Uses a classifier but we have no (comprehensible) labels
 
 # Augmentation
 use_random_rotations: True
-near_orthoganal: True
+near_orthogonal: True
+rotation_resample_mode: bicubic
 
 # Data
 mask_value: 0
 domain: rgb
-mean_and_std: 'naip' # we changed the functionaity of the imagenet_default_mean_and_std arg
-data_path: '/path/to/dataset' # Change me
-eval_data_path: '/path/to/eval_dataset' # Change me
+mean_and_std: naip # we changed the functionaity of the imagenet_default_mean_and_std arg
+data_path: '/data/million-case/train'
+eval_data_path: '/data/million-case/eval'
 
 # Logging
-log_wandb: True # Set to True to log to Weights & Biases
+log_wandb: True
 wandb_project: 'sarformer'
 wandb_entity: 'sarformer'
 wandb_run_name: auto
 output_dir: 'output/rgb_tokenizer'
 log_coebook_usage: True # also just to make it explicit
+show_user_warnings: True
 
 # Misc.
 device: "cuda"

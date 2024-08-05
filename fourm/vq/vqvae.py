@@ -118,7 +118,6 @@ class VQ(nn.Module, PyTorchModelHubMixin):
         freeze_enc: bool = False,
         undo_std: bool = False,
         config: Optional[Dict[str, Any]] = None,
-        **kwargs,
     ):
         if config is not None:
             config = copy.deepcopy(config)

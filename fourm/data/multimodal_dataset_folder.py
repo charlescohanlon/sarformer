@@ -218,7 +218,7 @@ class DatasetFolder(VisionDataset):
 
 
 class MultiModalDatasetFolder(VisionDataset):
-    """A generic multi-modal dataset loader where the samples are arranged in this way: ::
+    """A generic multi-modal dataset loader where the samples are arranged in this way:
 
         root/modality_a/class_x/xxx.ext
         root/modality_a/class_y/xxy.ext
@@ -274,6 +274,10 @@ class MultiModalDatasetFolder(VisionDataset):
         )
         self.modalities = modalities
         self.use_mask = "mask_valid" in modalities
+        if self.use_mask:
+            # So it doesn't try to load "mask_valid" from the file system (i.e., as it's own modality)
+            self.modalities.remove("mask_valid")
+
         # If modality_paths is not provided, use the default paths
         self.modality_paths = modality_paths
         for mod in self.modalities:
@@ -337,7 +341,7 @@ class MultiModalDatasetFolder(VisionDataset):
             for task in samples:
                 self.samples[task] = [self.samples[task][i] for i in permutation]
 
-        self.cache = {}
+        # self.cache = {}
         self.imgs = self.samples
 
     def _find_classes(self, dir: str) -> Tuple[List[str], Dict[str, int]]:
@@ -387,35 +391,31 @@ class MultiModalDatasetFolder(VisionDataset):
             # target, but the code is pretty self-explanatory
             tuple: (sample, target) where target is class_index of the target class.
         """
-        # BUG?: self.cache is never updated
-        if index in self.cache:
-            sample_dict, target = deepcopy(self.cache[index])
-        else:
-            sample_dict = {}
-            potential_missing_data_mods = []
-            for mod in self.modalities:
-                if mod == "mask_valid":
-                    # We don't use the mask transform to load the mask
-                    continue
+        # We're not caching to better take advantage of augmentations
+        # if index in self.cache:
+        #     sample_dict, target = deepcopy(self.cache[index])
+        # else:
+        sample_dict = {}
+        potential_missing_data_mods = []
+        for mod in self.modalities:
+            # BUG?: target changes in loop
+            path, target = self.samples[mod][index]
+            sample = self.modality_transforms[get_transform_key(mod)].load(path)
+            sample_dict[mod] = sample
 
-                # BUG?: target changes in loop
-                path, target = self.samples[mod][index]
-                sample = self.modality_transforms[get_transform_key(mod)].load(path)
-                sample_dict[mod] = sample
-
-                if "no_data_value" in self.modality_info[mod]:
-                    potential_missing_data_mods.append(mod)
-            # self.cache[index] = deepcopy((sample_dict, target))
+            if "no_data_value" in self.modality_info[mod]:
+                potential_missing_data_mods.append(mod)
+        # self.cache[index] = deepcopy((sample_dict, target))
 
         if self.transform is not None:
-            # Applies the UnifiedDataTransform which augments the data (as well as pre and post processing)
+            # Applies the UnifiedDataTransform which augments the data (as well as pre and post processes it)
             sample_dict = self.transform(sample_dict)
         if self.target_transform is not None:
             target = self.target_transform(target)
 
         sample_dict["class_idx"] = target
 
-        if self.return_path and not index in self.cache:
+        if self.return_path:  # and index not in self.cache:
             class_id, file_name = self.get_class_and_file(path)
             sample_dict["class_id"] = class_id
             sample_dict["file_name"] = file_name
@@ -427,6 +427,12 @@ class MultiModalDatasetFolder(VisionDataset):
                 )
             sample_dict["mask_valid"] = self._compute_no_data_mask(
                 potential_missing_data_mods, sample_dict
+            )
+
+        # This needs to be done after the mask is created otherwise the no_data_value is obscured by the standardization
+        if "rgb" in sample_dict:
+            sample_dict["rgb"] = self.modality_transforms["rgb"].rgb_tensor_norm(
+                sample_dict["rgb"]
             )
 
         return sample_dict
