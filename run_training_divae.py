@@ -354,8 +354,8 @@ def get_args() -> argparse.Namespace:
     parser.set_defaults(resolution_cond=False)
     parser.add_argument(
         "--eval_res_cond",
-        default=512,
-        type=int,
+        default=None,
+        type=Optional[int],
         help='"Original" resolution to condition diffusion decoder on during evaluation. (default: %(default)s)',
     )
 
@@ -408,14 +408,14 @@ def get_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--clip_grad",
-        type=float,
+        type=Optional[float],
         default=None,
         metavar="CLIPNORM",
         help="Clip gradient norm (default: %(default)s)",
     )
     parser.add_argument(
         "--skip_grad",
-        type=float,
+        type=Optional[float],
         default=None,
         metavar="SKIPNORM",
         help="Skip update if gradient norm larger than threshold (default: %(default)s)",

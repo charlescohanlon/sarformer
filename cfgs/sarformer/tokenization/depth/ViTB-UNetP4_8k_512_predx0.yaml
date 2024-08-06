@@ -42,7 +42,7 @@ blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
 warmup_epochs: 60
-batch_size: 128 # per GPU
+batch_size: 64 # per GPU
 clip_grad: 1.0
 model_ema: True
 model_ema_decay: 0.9999
@@ -77,8 +77,8 @@ eval_data_path: '/data/million-case/eval/dem_topo'
 
 # Logging
 log_wandb: True # Set to True to log to Weights & Biases
-wandb_project: 'sarformer'
-wandb_entity: 'sarformer'
+wandb_project: depth_tokenization
+wandb_entity: sarformer
 wandb_run_name: auto
 output_dir: 'output/depth_tokenizer'
 log_coebook_usage: True # also just to make it explicit
