@@ -697,7 +697,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--resume", default="", help="resume from checkpoint")
     parser.add_argument("--auto_resume", action="store_true")
     parser.add_argument("--no_auto_resume", action="store_false", dest="auto_resume")
-    parser.set_defaults(auto_resume=True)
+    parser.set_defaults(auto_resume=False)
 
     parser.add_argument(
         "--start_epoch", default=0, type=int, metavar="N", help="start epoch"
@@ -1670,7 +1670,9 @@ def train_one_epoch(
             get_crop_size(x["crop_coords"]).to(device) if "crop_coords" in x else None
         )
 
-        with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast(
+            device_type="cuda", dtype=dtype, enabled=dtype != torch.float32
+        ):
             model_output, code_loss = model(
                 clean_images, noisy_images, timesteps.to(device), orig_res=orig_res
             )
@@ -2036,7 +2038,9 @@ def evaluate(
             get_crop_size(x["crop_coords"]).to(device) if "crop_coords" in x else None
         )
 
-        with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast(
+            device_type="cuda", dtype=dtype, enabled=dtype != torch.float32
+        ):
             model_output, code_loss = model(
                 clean_images, noisy_images, timesteps.to(device), orig_res=orig_res
             )
@@ -2194,8 +2198,8 @@ def eval_metrics(
         )
 
         # Autoencode the images
-        with torch.no_grad(), torch.cuda.amp.autocast(
-            dtype=dtype, enabled=dtype != torch.float32
+        with torch.no_grad(), torch.amp.autocast(
+            device_type="cuda", dtype=dtype, enabled=dtype != torch.float32
         ):
             quant, _, tokens = unwrap_model(model).encode(clean_images)
             output = unwrap_model(model).decode_quant(
@@ -2415,8 +2419,8 @@ def eval_image_log(
             )
 
             # Autoencode the images
-            with torch.no_grad(), torch.cuda.amp.autocast(
-                dtype=dtype, enabled=dtype != torch.float32
+            with torch.no_grad(), torch.amp.autocast(
+                device_type="cuda", dtype=dtype, enabled=dtype != torch.float32
             ):
                 output = unwrap_model(model).autoencode(
                     clean_images,

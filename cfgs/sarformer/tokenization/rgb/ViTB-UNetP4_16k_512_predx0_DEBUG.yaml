@@ -42,7 +42,7 @@ blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
 warmup_epochs: 0
-batch_size: 64 # per GPU
+batch_size: 32 # per GPU
 model_ema: True
 model_ema_decay: 0.9999
 model_ema_update_freq: 12 # in iterations
@@ -77,7 +77,7 @@ data_path: '/scratch/bdej/cohanlon/unlabeled/train'
 eval_data_path: '/scratch/bdej/cohanlon/unlabeled/eval'
 
 # Logging
-log_wandb: True
+log_wandb: False
 wandb_project: rgb_tokenization
 wandb_entity: sarformer
 wandb_run_name: auto
@@ -87,5 +87,5 @@ show_user_warnings: False
 
 # Misc.
 device: "cuda"
-num_workers: 16 # should match num of cpu cores planned to use
+num_workers: 4
 cache_datasets: False

@@ -18,7 +18,7 @@ import torch
 from torch import nn, einsum
 import torch.nn.functional as F
 import torch.distributed as distributed
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
 from einops import rearrange, repeat
 from contextlib import contextmanager
@@ -299,7 +299,7 @@ class EuclideanCodebook(nn.Module):
                 f"{self.code_replacement_policy} is not a valid dead code replacement strategy."
             )
 
-    @autocast(enabled=False)
+    @autocast(device_type="cuda", enabled=False)
     def forward(self, x):
         x = x.float()
 
@@ -436,7 +436,7 @@ class CosineSimCodebook(nn.Module):
                 f"{self.code_replacement_policy} is not a valid dead code replacement strategy."
             )
 
-    @autocast(enabled=False)
+    @autocast(device_type="cuda", enabled=False)
     def forward(self, x):
         x = x.float()
 
