@@ -360,24 +360,35 @@ class DepthTransform(ImageTransform):
         self.no_data_value = no_data_value
 
     def depth_to_tensor(self, img):
-        # Used to normalize (I guess?)
-        # img = torch.Tensor(img / (2**16 - 1.0))
+        # Why?
+        img = torch.Tensor(img / (2**16 - 1.0))
         img = torch.Tensor(img)
         img = img.unsqueeze(0)  # 1 x H x W
+        # if self.standardize_depth:
+        #     img = self.truncated_depth_standardization(img)
+        return img
+
+    def depth_tensor_norm(self, img):
         if self.standardize_depth:
             img = self.truncated_depth_standardization(img)
         return img
 
     @staticmethod
-    def truncated_depth_standardization(depth, thresh: float = 0.1):
+    def truncated_depth_standardization(
+        depth, thresh: float = 0.1, no_data_value=-9999.0
+    ):
         """Truncated depth standardization
 
         :param depth: Depth map
         :param thresh: Threshold
         :return: Robustly standardized depth map
         """
+        # Remove no data values
+        trunc_depth = trunc_depth[trunc_depth != no_data_value]
+
         # Flatten depth and remove bottom and top 10% of values
         trunc_depth = torch.sort(depth.reshape(-1), dim=0)[0]
+
         trunc_depth = trunc_depth[
             int(thresh * trunc_depth.shape[0]) : int(
                 (1 - thresh) * trunc_depth.shape[0]

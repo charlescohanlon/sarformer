@@ -7,10 +7,12 @@ output/
 wandb/
 .vscode/
 *.pth
+*.pt
 *.DS_Store
 tokenizer_ckpts/
 *pkl
 *.egg-info
 **.tif
 
-job_scripts/*
+job_scripts/
+slurm-*

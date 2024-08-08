@@ -907,7 +907,7 @@ def main(args: argparse.Namespace) -> None:
         )
     elif args.domain == "depth":
         MODALITY_TRANSFORMS_DIVAE["depth"] = DepthTransform(
-            standardize_depth=False,
+            standardize_depth=True,
             # fills the empty regions after the rotation with this
             no_data_value=modality_info["depth"]["no_data_value"],
         )

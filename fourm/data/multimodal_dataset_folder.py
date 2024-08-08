@@ -272,11 +272,9 @@ class MultiModalDatasetFolder(VisionDataset):
         super(MultiModalDatasetFolder, self).__init__(
             root, transform=transform, target_transform=target_transform
         )
-        self.modalities = modalities
+
         self.use_mask = "mask_valid" in modalities
-        if self.use_mask:
-            # So it doesn't try to load "mask_valid" from the file system (i.e., as it's own modality)
-            self.modalities.remove("mask_valid")
+        self.modalities = [mod for mod in modalities if mod != "mask_valid"]
 
         # If modality_paths is not provided, use the default paths
         self.modality_paths = modality_paths
@@ -423,7 +421,7 @@ class MultiModalDatasetFolder(VisionDataset):
         if len(potential_missing_data_mods) > 0:
             if not self.use_mask:
                 raise ValueError(
-                    "No mask_value is set but some modalities require a mask"
+                    f"No mask_value is set but some modalities require a mask: {potential_missing_data_mods}"
                 )
             sample_dict["mask_valid"] = self._compute_no_data_mask(
                 potential_missing_data_mods, sample_dict
@@ -433,6 +431,11 @@ class MultiModalDatasetFolder(VisionDataset):
         if "rgb" in sample_dict:
             sample_dict["rgb"] = self.modality_transforms["rgb"].rgb_tensor_norm(
                 sample_dict["rgb"]
+            )
+
+        if "depth" in sample_dict:
+            sample_dict["depth"] = self.modality_transforms["depth"].depth_tensor_norm(
+                sample_dict["depth"]
             )
 
         return sample_dict
