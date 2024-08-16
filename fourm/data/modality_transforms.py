@@ -314,6 +314,7 @@ class RGBTransform(ImageTransform):
         return t
 
     def rgb_to_tensor(self, img):
+        # to_tensor converts to float, rescales to [0, 1], and reshapes to C x H x W
         img = TF.to_tensor(img)
         return img
 
@@ -355,13 +356,16 @@ class RGBTransform(ImageTransform):
 
 class DepthTransform(ImageTransform):
 
-    def __init__(self, standardize_depth=True, no_data_value=-9999.0):
+    def __init__(
+        self, standardize_depth=True, relative_norm=True, no_data_value=-9999.0
+    ):
         self.standardize_depth = standardize_depth
         self.no_data_value = no_data_value
+        self.relative_norm = relative_norm
 
     def depth_to_tensor(self, img):
-        # Why?
-        img = torch.Tensor(img / (2**16 - 1.0))
+        # Why? (can't use this with the no_data_value anyways)
+        # img = torch.Tensor(img / (2**16 - 1.0))
         img = torch.Tensor(img)
         img = img.unsqueeze(0)  # 1 x H x W
         # if self.standardize_depth:
@@ -369,9 +373,29 @@ class DepthTransform(ImageTransform):
         return img
 
     def depth_tensor_norm(self, img):
+        if self.relative_norm:
+            img = DepthTransform.depth_relative_normalization(
+                img, no_data_value=self.no_data_value
+            )
         if self.standardize_depth:
-            img = self.truncated_depth_standardization(img)
+            img = DepthTransform.truncated_depth_standardization(
+                img, thresh=0, no_data_value=self.no_data_value
+            )
         return img
+
+    @staticmethod
+    def depth_relative_normalization(depth, no_data_value=-9999.0):
+        """Depth relative normalization
+
+        :param depth: Depth map
+        :param no_data_value: the value to be treated as no data
+        :return: Relative normalized depth map
+        """
+        valid_depth_vals = depth[depth != no_data_value]
+        min_val = valid_depth_vals.min()
+        rel_max_val = valid_depth_vals.max() - min_val
+
+        return (depth - min_val) / rel_max_val
 
     @staticmethod
     def truncated_depth_standardization(
@@ -381,13 +405,14 @@ class DepthTransform(ImageTransform):
 
         :param depth: Depth map
         :param thresh: Threshold
+        :param no_data_value: the value to be treated as no data
         :return: Robustly standardized depth map
         """
-        # Remove no data values
-        trunc_depth = trunc_depth[trunc_depth != no_data_value]
-
         # Flatten depth and remove bottom and top 10% of values
         trunc_depth = torch.sort(depth.reshape(-1), dim=0)[0]
+
+        # Remove no data values
+        trunc_depth = trunc_depth[trunc_depth != no_data_value]
 
         trunc_depth = trunc_depth[
             int(thresh * trunc_depth.shape[0]) : int(

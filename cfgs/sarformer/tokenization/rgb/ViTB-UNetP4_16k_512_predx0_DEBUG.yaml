@@ -5,13 +5,13 @@ encoder_type: vit_b_enc
 decoder_type: unet_patched
 input_size_min: 512
 input_size_max: 512
-resolution_step: 1 # for varying image resolutions
+resolution_step: 1 # used as step in range to produce [512, 513)
 patch_size: 16 # encoder ViT patch size
 patch_size_dec: 4 # Patched UNet decoder patch size
 post_mlp: True # tanh MLP before quantizer, see ViT-VQGAN paper
 
 # Quantizer
-codebook_size: 8192
+codebook_size: 16_384
 latent_dim: 32
 norm_codes: True
 codebook_weight: 1.0
@@ -29,19 +29,19 @@ prediction_type: sample # diffusion target
 beta_schedule: linear # noise schedule
 cls_free_guidance_dropout: 0.0 # How often to drop out the conditioning
 masked_cfg: False # Randomly mask out the tokens when using conditioning dropout
-clip_sample: False # Only for logged images
-loss_fn: smooth_l1
+clip_sample: True # Only for logged images
+loss_fn: mse
 resolution_cond: False
 
 # Train
 dtype: bf16 # fp32, fp16 or bf16
-epochs: 10
+epochs: 1
 opt: adamw
 opt_betas: [0.9, 0.99]
 blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
-warmup_epochs: 5
+warmup_epochs: 0
 batch_size: 1 # per GPU
 model_ema: True
 model_ema_decay: 0.9999
@@ -53,11 +53,11 @@ weight_decay: 0.05 # the default
 # Eval
 step_eval: True
 epoch_eval: False
-eval_freq: 5000
-eval_metrics_freq: 5000
-eval_image_log_freq: 5000
-num_eval_metrics_samples: 5000 # Number of samples to use for evaluating image metrics during training.
-num_logged_images: 10
+eval_freq: 1
+eval_metrics_freq: 1
+eval_image_log_freq: 1
+num_eval_metrics_samples: 10 # Number of samples to use for evaluating image metrics during training.
+num_logged_images: 1
 eval_noise_schedule: DDIMScheduler
 num_eval_timesteps: 50
 input_size_eval: 512
@@ -71,20 +71,21 @@ rotation_resample_mode: bicubic
 
 # Data
 mask_value: 0
-domain: depth
-data_path: '/scratch/bdej/cohanlon/unsupervised/train'
+domain: rgb
+mean_and_std: naip # we changed the functionaity of the imagenet_default_mean_and_std arg
+data_path: '/scratch/bdej/cohanlon/test'
 eval_data_path: '/scratch/bdej/cohanlon/unsupervised/eval'
 
 # Logging
-log_wandb: False # Set to True to log to Weights & Biases
-wandb_project: depth_tokenizer
+log_wandb: False
+wandb_project: rgb_tokenizer
 wandb_entity: sarformer
 wandb_run_name: auto
 output_dir: 'output/auto'
-log_codebook_usage: True # also just to make it explicit
+log_coebook_usage: True # also just to make it explicit
 show_user_warnings: False
 
 # Misc.
-device: cpu # CHANGE THIS
-num_workers: 32
+device: cpu
+num_workers: 10 # for data loader
 cache_datasets: False

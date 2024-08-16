@@ -559,7 +559,7 @@ class ViTEncoder(nn.Module):
 
         if ckpt_path is not None:
             print(f"Loading checkpoint from {ckpt_path}")
-            ckpt = torch.load(ckpt_path)
+            ckpt = torch.load(ckpt_path, weights_only=False)
             ckpt["model"]["pos_emb"] = rearrange(
                 ckpt["model"]["pos_embed"][:, 1:],
                 "b (nh nw) d -> b d nh nw",

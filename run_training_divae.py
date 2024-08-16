@@ -85,6 +85,8 @@ from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
 
 from fourm.utils.data_constants import NAIP_MEAN, NAIP_STD
 
+torch.set_printoptions(threshold=sys.maxsize, linewidth=sys.maxsize)
+
 
 def unwrap_model(model: Union[nn.Module, DDP]) -> nn.Module:
     """Retrieves a model from a DDP wrapper, if necessary."""
@@ -908,6 +910,7 @@ def main(args: argparse.Namespace) -> None:
     elif args.domain == "depth":
         MODALITY_TRANSFORMS_DIVAE["depth"] = DepthTransform(
             standardize_depth=True,
+            relative_norm=True,
             # fills the empty regions after the rotation with this
             no_data_value=modality_info["depth"]["no_data_value"],
         )
@@ -2216,7 +2219,7 @@ def eval_metrics(
 
         # Convert inputs and outputs to images again
         if domain in ["rgb"]:
-            # 3-channel domains in [-1,1]
+            # 3-channel domains in [-1,1] "denormalized" to [0,1]
             gt = denormalize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
             reconst = denormalize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
         elif domain in ["depth"]:
