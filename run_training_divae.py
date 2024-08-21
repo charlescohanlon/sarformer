@@ -65,7 +65,7 @@ import fourm.utils as utils
 from fourm.data import build_wds_divae_dataloader
 from fourm.data import RandomCropImageAugmenter, CenterCropImageAugmenter
 import fourm.utils.data_constants as data_constants
-from fourm.utils import denormalize
+from fourm.utils import destandardize
 from fourm.utils.optim_factory import create_optimizer
 from fourm.utils import to_2tuple
 from fourm.utils import NativeScalerWithGradNormCount as NativeScaler
@@ -904,14 +904,14 @@ def main(args: argparse.Namespace) -> None:
         MODALITY_TRANSFORMS_DIVAE["rgb"] = RGBTransform(
             mean_and_std=args.mean_and_std,
             color_jitter=False,
-            # fills the empty regions after the rotation with this
+            # (fills the empty regions after rotation with this)
             no_data_value=modality_info["rgb"]["no_data_value"],
         )
     elif args.domain == "depth":
         MODALITY_TRANSFORMS_DIVAE["depth"] = DepthTransform(
             standardize_depth=True,
             relative_norm=True,
-            # fills the empty regions after the rotation with this
+            # (fills the empty regions after rotation with this)
             no_data_value=modality_info["depth"]["no_data_value"],
         )
     else:
@@ -1651,9 +1651,10 @@ def train_one_epoch(
         # Randomly sample an image size between the min and max for this batch and resize the images
         res_idx = hash(str(it)) % len(train_res_choices)
         image_size = train_res_choices[res_idx]
-        clean_images = F.interpolate(
-            clean_images, image_size, mode="bilinear", align_corners=False
-        )
+        # NOTE: only using one image size
+        # clean_images = F.interpolate(
+        #     clean_images, image_size, mode="bilinear", align_corners=False
+        # )
 
         # Sample noise that we'll add to the images
         noise = torch.randn(clean_images.shape).to(device)
@@ -2019,9 +2020,10 @@ def evaluate(
         # Randomly sample an image size between the min and max for this batch and resize the images
         res_idx = hash(str(step)) % len(train_res_choices)
         image_size = train_res_choices[res_idx]
-        clean_images = F.interpolate(
-            clean_images, image_size, mode="bilinear", align_corners=False
-        )
+        # NOTE: only using one image size
+        # clean_images = F.interpolate(
+        #     clean_images, image_size, mode="bilinear", align_corners=False
+        # )
 
         # Sample noise that we'll add to the images
         noise = torch.randn(clean_images.shape).to(device)
@@ -2196,9 +2198,10 @@ def eval_metrics(
         )
 
         # Resize image to eval size
-        clean_images = F.interpolate(
-            clean_images, eval_size, mode="bilinear", align_corners=False
-        )
+        # NOTE: only using one image size
+        # clean_images = F.interpolate(
+        #     clean_images, eval_size, mode="bilinear", align_corners=False
+        # )
 
         # Autoencode the images
         with torch.no_grad(), torch.amp.autocast(
@@ -2219,12 +2222,17 @@ def eval_metrics(
 
         # Convert inputs and outputs to images again
         if domain in ["rgb"]:
-            # 3-channel domains in [-1,1] "denormalized" to [0,1]
-            gt = denormalize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
-            reconst = denormalize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
+            # 3-channel domains in [-1,1] "destandardized" to [0,1]
+            gt = destandardize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
+            reconst = destandardize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
+
+            # Was observing a bug with the output being just outside of [0, 1] due to rounding error
+            gt = gt.clamp(0.0, 1.0)
+            reconst = reconst.clamp(0.0, 1.0)
+
         elif domain in ["depth"]:
             # 1-channel per-sample standardized domains
-            # TODO: Perform robust per-sample standardization to evaluate shift and scale invariant metrics
+            # TODO: if we're going to per-sample standardize we need to destandardize here
             gt = clean_images[:, :1]
             reconst = output[:, :1]
         elif domain in [
@@ -2235,12 +2243,12 @@ def eval_metrics(
             "reshading",
         ]:
             # 1-channel domains in [-1,1]
-            gt = denormalize(clean_images[:, :1], mean=(0.5,), std=(0.5,))
-            reconst = denormalize(output[:, :1], mean=(0.5,), std=(0.5,))
+            gt = destandardize(clean_images[:, :1], mean=(0.5,), std=(0.5,))
+            reconst = destandardize(output[:, :1], mean=(0.5,), std=(0.5,))
         elif domain in ["principal_curvature"]:
             # 2-channel domains in [-1,1]
-            gt = denormalize(clean_images[:, :2], mean=(0.5, 0.5), std=(0.5, 0.5))
-            reconst = denormalize(output[:, :2], mean=(0.5, 0.5), std=(0.5, 0.5))
+            gt = destandardize(clean_images[:, :2], mean=(0.5, 0.5), std=(0.5, 0.5))
+            reconst = destandardize(output[:, :2], mean=(0.5, 0.5), std=(0.5, 0.5))
         else:
             gt = clean_images.contiguous()
             reconst = output.contiguous()
@@ -2417,9 +2425,10 @@ def eval_image_log(
             )
 
             # Resize image to eval size
-            clean_images = F.interpolate(
-                clean_images, eval_size, mode="bilinear", align_corners=False
-            )
+            # NOTE: only using one image size
+            # clean_images = F.interpolate(
+            #     clean_images, eval_size, mode="bilinear", align_corners=False
+            # )
 
             # Autoencode the images
             with torch.no_grad(), torch.amp.autocast(
@@ -2435,12 +2444,8 @@ def eval_image_log(
 
             # Convert inputs and outputs to images again
             if domain in ["rgb", "normal"]:
-                gt = denormalize(
-                    clean_images[:, :3], mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)
-                )
-                reconst = denormalize(
-                    output[:, :3], mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)
-                )
+                gt = destandardize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
+                reconst = destandardize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
             elif domain in ["depth"]:
                 # 1-channel per-sample standardized domains
                 gt = clean_images[:, :1]
@@ -2460,21 +2465,21 @@ def eval_image_log(
                 "reshading",
             ]:
                 # 1-channel domains in [-1,1]
-                gt = denormalize(clean_images[:, :1], mean=(0.5,), std=(0.5,))
-                reconst = denormalize(output[:, :1], mean=(0.5,), std=(0.5,))
+                gt = destandardize(clean_images[:, :1], mean=(0.5,), std=(0.5,))
+                reconst = destandardize(output[:, :1], mean=(0.5,), std=(0.5,))
             elif domain in ["principal_curvature"]:
                 # 2-channel domains in [-1,1]
                 B, _, H, W = clean_images.shape
                 gt = torch.zeros(
                     B, 3, H, W, device=clean_images.device, dtype=clean_images.dtype
                 )
-                gt[:, [0, 1]] = denormalize(
+                gt[:, [0, 1]] = destandardize(
                     clean_images[:, :2], mean=(0.5, 0.5), std=(0.5, 0.5)
                 )
                 reconst = torch.zeros(
                     B, 3, H, W, device=clean_images.device, dtype=clean_images.dtype
                 )
-                reconst[:, [0, 1]] = denormalize(
+                reconst[:, [0, 1]] = destandardize(
                     output[:, :2], mean=(0.5, 0.5), std=(0.5, 0.5)
                 )
             else:

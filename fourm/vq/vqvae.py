@@ -35,7 +35,7 @@ from fourm.vq.scheduling import (
     PipelineCond,
 )
 
-from fourm.utils import denormalize
+from fourm.utils import destandardize
 
 
 # If freeze_enc is True, the following modules will be frozen
@@ -291,7 +291,7 @@ class VQ(nn.Module, PyTorchModelHubMixin):
 
     def prepare_input(self, x: torch.Tensor) -> torch.Tensor:
         """Preprocesses the input image tensor before feeding it to the encoder.
-        If self.undo_std, the input is first denormalized from the ImageNet
+        If self.undo_std, the input is first destandardized from the ImageNet
         standardization to [-1, 1]. If semantic segmentation is performed, the
         class indices are embedded.
 
@@ -303,7 +303,7 @@ class VQ(nn.Module, PyTorchModelHubMixin):
             Preprocessed input tensor of shape B C H W
         """
         if self.undo_std:
-            x = 2.0 * denormalize(x) - 1.0
+            x = 2.0 * destandardize(x) - 1.0
         if self.cls_emb is not None:
             x = rearrange(self.cls_emb(x), "b h w c -> b c h w")
         return x

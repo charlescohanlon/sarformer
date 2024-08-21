@@ -2,6 +2,7 @@ import json
 import os
 from collections import defaultdict
 from typing import Optional, Union, List
+from itertools import product
 
 from tokenizers import AddedToken, decoders, trainers
 from tokenizers import Tokenizer
@@ -18,8 +19,9 @@ def generate_sentinel_tokens(num=100, start_id=0):
 
     return tokens
 
+
 def generate_coord_tokens(bins=1000):
-    """Extra tokens that are used for bounding box coordinates, 
+    """Extra tokens that are used for bounding box coordinates,
     xmin, ymin, xmax, ymax, but also other modalities like color
     maps, metadata, or poses.
     """
@@ -28,12 +30,70 @@ def generate_coord_tokens(bins=1000):
 
     for s in coords_str:
         for i in range(bins):
-            tokens.append(AddedToken(content=s.format(i), single_word=True, normalized=False))
+            tokens.append(
+                AddedToken(content=s.format(i), single_word=True, normalized=False)
+            )
 
     return tokens
 
+
+def generate_metadata_tokens(num=0, hex_tok_len=2):
+    tokens = []
+    type_token = "v0={}"
+    for i in range(num):
+        tokens.append(
+            AddedToken(content=type_token.format(i), single_word=True, normalized=False)
+        )
+
+    tokens.append(AddedToken(content="v1=", single_word=False, normalized=False))
+    hex_digits = "0123456789ABDCDEF"
+    # hex_tok_len = 2 => [01], [02], ..., [0F], [10], [11], ..., [FF]
+    for c in product(hex_digits, repeat=hex_tok_len):
+        tokens.append(
+            AddedToken(content=f"[{''.join(c)}]", single_word=False, normalized=False)
+        )
+
+    # year tokens
+    for i in range(1970, 2025):  # NOTE: these years are kind of arbitrary
+        tokens.append(
+            AddedToken(content=f"[{i}]-", single_word=False, normalized=False)
+        )
+
+    # month tokens
+    for i in range(1, 13):
+        tokens.append(
+            AddedToken(content=f"-[{i:02}]-", single_word=False, normalized=False)
+        )
+
+    # day tokens
+    for i in range(1, 32):
+        tokens.append(
+            AddedToken(content=f"-[{i:02}]", single_word=False, normalized=False)
+        )
+
+    # hour tokens
+    for i in range(24):
+        tokens.append(
+            AddedToken(content=f"[{i:02}]:", single_word=False, normalized=False)
+        )
+
+    # minute tokens
+    for i in range(60):
+        tokens.append(
+            AddedToken(content=f":[{i:02}]:", single_word=False, normalized=False)
+        )
+
+    # second tokens
+    for i in range(60):
+        tokens.append(
+            AddedToken(content=f":[{i:02}]", single_word=False, normalized=False)
+        )
+
+    return tokens
+
+
 def generate_object_class_tokens(dataset="coco"):
-    with open(os.path.join(os.path.dirname(__file__), 'object_classes.json')) as f:
+    with open(os.path.join(os.path.dirname(__file__), "object_classes.json")) as f:
         object_classes = json.load(f)[dataset]
 
     tokens = [
@@ -45,32 +105,33 @@ def generate_object_class_tokens(dataset="coco"):
 
 
 def train_unified_wordpiece_tokenizer(
-        files,
-        vocab_size,
-        sentinel_tokens: List[Union[str, AddedToken]] = None,
-        coord_tokens: List[Union[str, AddedToken]] = None,
-        object_class_tokens: List[Union[str, AddedToken]] = None,
-        unk_token: Union[str, AddedToken] = "[UNK]",
-        pad_token: Union[str, AddedToken] = "[PAD]",
-        sos_token: Union[str, AddedToken] = "[SOS]",
-        eos_token: Union[str, AddedToken] = "[EOS]",
-        additional_special_tokens: List[Union[str, AddedToken]] = None,
-        min_frequency=0,
-        clean_text: bool = True,
-        handle_chinese_chars: bool = True,
-        strip_accents: Optional[bool] = None,
-        lowercase: bool = True,
-        wordpieces_prefix: str = "##",
-        show_progress=True,
+    files,
+    vocab_size,
+    sentinel_tokens: List[Union[str, AddedToken]] = None,
+    coord_tokens: List[Union[str, AddedToken]] = None,
+    object_class_tokens: List[Union[str, AddedToken]] = None,
+    metadata_tokens: List[Union[str, AddedToken]] = None,
+    unk_token: Union[str, AddedToken] = "[UNK]",
+    pad_token: Union[str, AddedToken] = "[PAD]",
+    sos_token: Union[str, AddedToken] = "[SOS]",
+    eos_token: Union[str, AddedToken] = "[EOS]",
+    additional_special_tokens: List[Union[str, AddedToken]] = None,
+    min_frequency=0,
+    clean_text: bool = True,
+    handle_chinese_chars: bool = True,
+    strip_accents: Optional[bool] = None,
+    lowercase: bool = True,
+    wordpieces_prefix: str = "##",
+    show_progress=True,
 ):
     tokenizer = Tokenizer(WordPiece(unk_token=str(unk_token)))
 
     tokenizer.normalizer = BertNormalizer(
-            clean_text=clean_text,
-            handle_chinese_chars=handle_chinese_chars,
-            strip_accents=strip_accents,
-            lowercase=lowercase,
-        )
+        clean_text=clean_text,
+        handle_chinese_chars=handle_chinese_chars,
+        strip_accents=strip_accents,
+        lowercase=lowercase,
+    )
     tokenizer.pre_tokenizer = BertPreTokenizer()
     tokenizer.decoder = decoders.WordPiece(prefix=wordpieces_prefix)
 
@@ -86,6 +147,8 @@ def train_unified_wordpiece_tokenizer(
         special_tokens.extend(coord_tokens)
     if object_class_tokens is not None:
         special_tokens.extend(object_class_tokens)
+    if metadata_tokens is not None:
+        special_tokens.extend(metadata_tokens)
     if additional_special_tokens is not None:
         special_tokens.extend(additional_special_tokens)
 
@@ -106,9 +169,14 @@ def train_unified_wordpiece_tokenizer(
 
 
 def get_sentinel_to_id_mapping(tokenizer, match_str="[S_"):
-    sentinel_tokens = {k: v for k, v in tokenizer.get_vocab().items() if k.startswith(match_str)}
+    sentinel_tokens = {
+        k: v for k, v in tokenizer.get_vocab().items() if k.startswith(match_str)
+    }
     # Extract the sentinel token id, the id is of the form "[S_0]", "[S_1]", etc.
-    sentinel_to_id = {int(k.split("_")[1][:-1]): v for k, v in sorted(sentinel_tokens.items(), key=lambda x:x[1])}
+    sentinel_to_id = {
+        int(k.split("_")[1][:-1]): v
+        for k, v in sorted(sentinel_tokens.items(), key=lambda x: x[1])
+    }
     return sentinel_to_id
 
 

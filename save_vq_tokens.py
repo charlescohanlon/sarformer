@@ -23,7 +23,6 @@ import torch
 from einops import rearrange, repeat
 from PIL import Image
 from torch.utils.data import Dataset
-from torchvision.datasets import DatasetFolder
 from torchvision.datasets.folder import find_classes, make_dataset
 from tqdm import tqdm
 

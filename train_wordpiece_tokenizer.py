@@ -14,34 +14,78 @@
 import os
 import argparse
 from fourm.utils.tokenizer import train_unified_wordpiece_tokenizer
-from fourm.utils.tokenizer import generate_sentinel_tokens, generate_coord_tokens, generate_object_class_tokens
+from fourm.utils.tokenizer import (
+    generate_sentinel_tokens,
+    generate_coord_tokens,
+    generate_object_class_tokens,
+    generate_metadata_tokens,
+)
 
 
 def get_args():
-    parser = argparse.ArgumentParser('Train unified WordPiece tokenizer', add_help=False)
-    parser.add_argument('--text_files', type=str, default='/datasets/imagenet_multitask/metadata/all_captions_BLIP.txt',
-                        help="Files to train the tokenizer on, separated by a double dash '--'")
-    parser.add_argument('--save_file', type=str, default="utils/tokenizer/trained/default_tokenizer.json",
-                        help="Path to the saved tokenizer. Can then be loaded using Tokenizer.from_file(path).")
-    parser.add_argument('--vocab_size', type=int, default=30_000,
-                        help="Vocabulary size")
-    parser.add_argument('--num_sentinels', type=int, default=200, help="Number of sentinel tokens")
-    parser.add_argument('--coord_bins', type=int, default=1000, help="Number of coordinate bins (for detection)")
-    parser.add_argument('--object_classes', type=str, default='coco', choices=['none', 'coco'],
-                        help="Special tokens for detection instances (e.g., instance class names from the COCO dataset)")
-    parser.add_argument('--lowercase', action='store_true')
-    parser.add_argument('--no_lowercase', action='store_false', dest='lowercase')
+    parser = argparse.ArgumentParser(
+        "Train unified WordPiece tokenizer", add_help=False
+    )
+    parser.add_argument(
+        "--text_files",
+        type=str,
+        default="/datasets/imagenet_multitask/metadata/all_captions_BLIP.txt",
+        help="Files to train the tokenizer on, separated by a double dash '--'",
+    )
+    parser.add_argument(
+        "--save_file",
+        type=str,
+        default="fourm/utils/tokenizer/trained/default_tokenizer.json",
+        help="Path to the saved tokenizer. Can then be loaded using Tokenizer.from_file(path).",
+    )
+    parser.add_argument(
+        "--vocab_size", type=int, default=30_000, help="Vocabulary size"
+    )
+    parser.add_argument(
+        "--num_sentinels", type=int, default=200, help="Number of sentinel tokens"
+    )
+    parser.add_argument(
+        "--coord_bins",
+        type=int,
+        default=0,  # Not using these
+        help="Number of coordinate bins (for detection)",
+    )
+    parser.add_argument(
+        "--num_metadata",
+        type=int,
+        default=0,
+        help="Number of types of metadata to be tokenized",
+    )
+    parser.add_argument(
+        "--hex_tok_len",
+        type=int,
+        default=2,
+        help="Length of hex tokens for metadata",
+    )
+    parser.add_argument(
+        "--object_classes",
+        type=str,
+        default="none",  # Not using these
+        choices=["none", "coco"],
+        help="Special tokens for detection instances (e.g., instance class names from the COCO dataset)",
+    )
+    parser.add_argument("--lowercase", action="store_true")
+    parser.add_argument("--no_lowercase", action="store_false", dest="lowercase")
     parser.set_defaults(lowercase=True)
     return parser.parse_args()
 
 
+# TODO: check AddedToken args and whether training is MP or not, also review WordPiece
 def train_tokenizer(args):
 
     files = args.text_files.split("--")
     # Get special tokens
     sentinel_tokens = generate_sentinel_tokens(num=args.num_sentinels)
     coord_tokens = generate_coord_tokens(bins=args.coord_bins)
-    if args.object_classes == 'none':
+    metadata_tokens = generate_metadata_tokens(
+        num=args.num_metadata, hex_tok_len=args.hex_tok_len
+    )
+    if args.object_classes == "none":
         object_class_tokens = None
     else:
         object_class_tokens = generate_object_class_tokens(args.object_classes)
@@ -53,8 +97,9 @@ def train_tokenizer(args):
         files=files,
         vocab_size=args.vocab_size,
         sentinel_tokens=sentinel_tokens,
-        coord_tokens=coord_tokens,
-        object_class_tokens=object_class_tokens,
+        coord_tokens=None,  # Not using these
+        object_class_tokens=None,  # Not using these
+        metadata_tokens=metadata_tokens,
         lowercase=args.lowercase,
     )
 

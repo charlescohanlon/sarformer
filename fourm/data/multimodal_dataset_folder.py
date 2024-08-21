@@ -368,15 +368,17 @@ class MultiModalDatasetFolder(VisionDataset):
 
     def _compute_no_data_mask(self, no_data_mods, sample_dict):
         channel_dim = 0
-        mask = torch.zeros_like(sample_dict[no_data_mods[0]], dtype=torch.bool).all(
-            dim=channel_dim, keepdim=True
-        )
+        H, W = sample_dict[no_data_mods[0]].shape[1:3]
+        mask = torch.ones(1, H, W, dtype=torch.bool)
         for mod in no_data_mods:
             sample = sample_dict[mod]
             assert sample.shape[channel_dim] == self.modality_info[mod]["num_channels"]
             no_data_value = self.modality_info[mod]["no_data_value"]
-            new_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
-            mask = mask.logical_or(new_mask)
+
+            no_data_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
+            nan_mask = np.isfinite(sample).any(dim=channel_dim, keepdim=True)
+            mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
+
         return mask
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:

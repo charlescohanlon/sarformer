@@ -391,11 +391,16 @@ class DepthTransform(ImageTransform):
         :param no_data_value: the value to be treated as no data
         :return: Relative normalized depth map
         """
+        # Remove no-data values
         valid_depth_vals = depth[depth != no_data_value]
-        min_val = valid_depth_vals.min()
-        rel_max_val = valid_depth_vals.max() - min_val
 
-        return (depth - min_val) / rel_max_val
+        # Remove nans and infs
+        valid_depth_vals = valid_depth_vals[np.isfinite(valid_depth_vals)]
+
+        min_val = valid_depth_vals.min()
+        max_val = valid_depth_vals.max()
+
+        return (depth - min_val) / (max_val - min_val)
 
     @staticmethod
     def truncated_depth_standardization(
@@ -411,8 +416,11 @@ class DepthTransform(ImageTransform):
         # Flatten depth and remove bottom and top 10% of values
         trunc_depth = torch.sort(depth.reshape(-1), dim=0)[0]
 
-        # Remove no data values
+        # Remove no-data values
         trunc_depth = trunc_depth[trunc_depth != no_data_value]
+
+        # Remove nans and infs
+        trunc_depth = trunc_depth[np.isfinite(trunc_depth)]
 
         trunc_depth = trunc_depth[
             int(thresh * trunc_depth.shape[0]) : int(
