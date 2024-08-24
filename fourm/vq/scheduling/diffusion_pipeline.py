@@ -118,9 +118,10 @@ class PipelineCond(DiffusionPipeline):
             model_output = self.model(image, t, cond, orig_res=orig_res, **kwargs)
 
             if do_cfg:
+                # TODO: is there a better way to get unconditional output?
                 model_output_uncond = self.model(
                     image, t, cond, unconditional=True, **kwargs
-                )  # TODO: is there a better way to get unconditional output?
+                )  
 
                 if callable(guidance_scale):
                     guidance_scale_value = guidance_scale(
@@ -141,7 +142,7 @@ class PipelineCond(DiffusionPipeline):
                 else:
                     model_output = model_output_cfg
 
-            # 2. Compute previous image: x_t -> t_t-1
+            # 2. Compute previous image: x_t -> x_t-1
             with torch.amp.autocast(device_type="cuda", enabled=False):
                 image = self.scheduler.step(
                     model_output.float(), t, image, generator=generator

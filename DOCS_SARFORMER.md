@@ -1,5 +1,9 @@
 # DOCUMENTATION
 
+## Random Notes
+
+
+
 ## Tokenization
 
 ### Metadata (Strutured Data) [NEEDS TO BE UPDATED]

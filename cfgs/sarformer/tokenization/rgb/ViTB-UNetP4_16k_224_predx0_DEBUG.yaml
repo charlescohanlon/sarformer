@@ -57,7 +57,7 @@ epoch_eval: True
 eval_freq: 1
 eval_metrics_freq: 1
 eval_image_log_freq: 1
-num_eval_metrics_samples: 4 # Number of samples to use for evaluating image metrics during training.
+num_eval_metrics_samples: 5000 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 0
 eval_noise_schedule: DDIMScheduler
 num_eval_timesteps: 50
@@ -88,7 +88,8 @@ show_user_warnings: False
 
 # Misc.
 device: cuda
-num_workers: 10 # for data loader
+num_workers: 119 # for data loader
 cache_datasets: False
 
-eval_only: False
+model_ema_force_cpu: True # NOTE: True should prevent eval of EMA model
+eval_only: True

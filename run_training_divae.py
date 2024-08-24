@@ -32,6 +32,7 @@ from typing import Iterable, List, Set, Dict, Optional, Union, Callable
 import yaml
 from PIL import Image
 import matplotlib.pyplot as plt
+import gc
 
 import numpy as np
 import torch
@@ -1840,6 +1841,12 @@ def launch_evals(
     """
     all_eval_stats = {}
 
+    # (hopefully) helps with 'c10::Error' CUDA error: initialization error
+    # see https://github.com/pytorch/pytorch/issues/67978#issuecomment-1661986812
+    # annoyingly, this error only happed once so far and never again
+    gc.collect()
+    torch.cuda.empty_cache()
+
     if launch_evaluate:
         eval_stats = evaluate(
             model,
@@ -1875,6 +1882,7 @@ def launch_evals(
             )
             all_eval_stats.update(eval_stats)
 
+        gc.collect()
         torch.cuda.empty_cache()
 
     # Evaluate image metrics and log images
@@ -1922,6 +1930,7 @@ def launch_evals(
                 )
                 all_eval_stats.update(eval_metrics_results)
 
+        gc.collect()
         torch.cuda.empty_cache()
 
     if launch_eval_image_log:
@@ -1963,6 +1972,7 @@ def launch_evals(
                     prefix="[EMA Eval]",
                 )
 
+        gc.collect()
         torch.cuda.empty_cache()
 
     return all_eval_stats
@@ -2133,24 +2143,25 @@ def eval_metrics(
     model.eval()
 
     # Initialize metrics
+    # make no mistake, we're NOT computing these on CPU (it takes forever)
     mse_metric = MeanSquaredError(
-        squared=True, sync_on_compute=True, compute_on_cpu=compute_on_cpu
+        squared=True, sync_on_compute=True, compute_on_cpu=False
     ).to(device)
-    mae_metric = MeanAbsoluteError(
-        sync_on_compute=True, compute_on_cpu=compute_on_cpu
-    ).to(device)
+    mae_metric = MeanAbsoluteError(sync_on_compute=True, compute_on_cpu=False).to(
+        device
+    )
     psnr_metric = PeakSignalNoiseRatio(
         data_range=1.0,
         reduction="elementwise_mean",
         sync_on_compute=True,
-        compute_on_cpu=compute_on_cpu,
+        compute_on_cpu=False,
     ).to(device)
     ms_ssim_metric = MultiScaleStructuralSimilarityIndexMeasure(
         data_range=1.0,
         reduction="elementwise_mean",
         normalize=False,
         sync_on_compute=True,
-        compute_on_cpu=compute_on_cpu,
+        compute_on_cpu=False,
     ).to(device)
     if domain in ["rgb"]:
         # All of these metrics expect images in [0, 1]
@@ -2159,14 +2170,14 @@ def eval_metrics(
             reset_real_features=True,
             normalize=True,
             sync_on_compute=True,
-            compute_on_cpu=compute_on_cpu,
+            compute_on_cpu=False,
         ).to(device)
         lpips_metric = LearnedPerceptualImagePatchSimilarity(
             net_type="alex",
             reduction="mean",
             normalize=True,
             sync_on_compute=True,
-            compute_on_cpu=compute_on_cpu,
+            compute_on_cpu=False,
         ).to(device)
         inception_metric = (
             None
@@ -2176,7 +2187,7 @@ def eval_metrics(
                 splits=10,
                 normalize=True,
                 sync_on_compute=True,
-                compute_on_cpu=compute_on_cpu,
+                compute_on_cpu=False,
             ).to(device)
         )
     else:
@@ -2310,8 +2321,8 @@ def eval_metrics(
         codebook_usage = compute_codebook_usage(
             global_tokens,
             codebook_size=unwrap_model(model).quantize.codebook_size,
-            window_size=256
-            * tokens.shape[1:].numel(),  # Compute codebook usage over 256 images
+            # Compute codebook usage over 256 images
+            window_size=256 * tokens.shape[1:].numel(),
         )
         results[prefix + "CodebookUsage" + suffix] = codebook_usage
 

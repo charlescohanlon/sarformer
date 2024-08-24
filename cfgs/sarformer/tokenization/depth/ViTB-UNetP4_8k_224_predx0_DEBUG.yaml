@@ -46,9 +46,9 @@ batch_size: 64 # per GPU
 save_ckpt_freq: 1 # in epochs
 weight_decay: 0.05 # the default
 find_unused_params: False
-model_ema: True
-model_ema_decay: 0.9999
-model_ema_update_freq: 10 # in iterations
+model_ema: False
+# model_ema_decay: 0.9999
+# model_ema_update_freq: 1 # in iterations
 
 # Eval
 step_eval: False
@@ -56,7 +56,7 @@ epoch_eval: True
 eval_freq: 1
 eval_metrics_freq: 1
 eval_image_log_freq: 1
-num_eval_metrics_samples: 4 # Number of samples to use for evaluating image metrics during training.
+num_eval_metrics_samples: 5000 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 0
 eval_noise_schedule: DDIMScheduler
 num_eval_timesteps: 50
@@ -85,6 +85,6 @@ log_codebook_usage: True # also just to make it explicit
 show_user_warnings: False
 
 # Misc.
-device: cuda
-num_workers: 32
+device: cpu
+num_workers: 1
 cache_datasets: False

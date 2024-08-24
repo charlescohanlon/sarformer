@@ -318,10 +318,7 @@ def main(args):
         tokens_paths = tokens_paths_filtered
 
         # Merge batch and number of augmentation dimensions
-        if "semseg" in args.task:
-            imgs_batch = rearrange(imgs_batch, "b n h w -> (b n) h w")
-        else:
-            imgs_batch = rearrange(imgs_batch, "b n c h w -> (b n) c h w")
+        imgs_batch = rearrange(imgs_batch, "b n c h w -> (b n) c h w")
 
         # For efficiency, process images with batch size that might be different from loader batch size or num augmentations
         sub_batches = imgs_batch.split(args.batch_size, dim=0)
@@ -332,37 +329,14 @@ def main(args):
             sub_batch = sub_batch.to(device)
 
             with torch.no_grad():
-                if "CLIP" in args.task:
-                    B, C, H, W = sub_batch.shape
-                    P_H, P_W = feature_extractor.conv1.kernel_size
-                    N_H, N_W = H // P_H, W // P_W
-                    sub_batch = feature_extractor(
-                        sub_batch, return_final_tokens_no_cls=True
-                    )
-                    sub_batch = rearrange(
-                        sub_batch, "b (nh nw) d -> b d nh nw", nh=N_H, nw=N_W
-                    )
-                if "DINO" in args.task:
-                    B, C, H, W = sub_batch.shape
-                    P_H, P_W = feature_extractor.patch_embed.proj.kernel_size
-                    N_H, N_W = H // P_H, W // P_W
-                    sub_batch = feature_extractor(sub_batch, is_training=True)
-                    if "global" in args.task:
-                        sub_batch = sub_batch["x_norm_clstoken"]
-                        sub_batch = sub_batch.unsqueeze(2).unsqueeze(2)
-                    else:
-                        sub_batch = sub_batch["x_norm_patchtokens"]
-                        sub_batch = rearrange(
-                            sub_batch, "b (nh nw) d -> b d nh nw", nh=N_H, nw=N_W
-                        )
-
                 tokens = model.tokenize(sub_batch)
-                if (
-                    tokens.size(-1) == 1
-                ):  # For the global embedding tokens, squeeze the last dimension
+
+                # For the global embedding tokens, squeeze the last dimension
+                if tokens.size(-1) == 1:
                     tokens = tokens.squeeze(2)
                 tokens = rearrange(tokens, "b h w -> b (h w)")
 
+            # TODO: saved as int?
             tokens = tokens.detach().cpu().numpy().astype(np.int16)
             all_tokens.append(tokens)
 
