@@ -43,20 +43,20 @@ blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
 batch_size: 80 # per GPU
-save_ckpt_freq: 5 # in epochs
+save_ckpt_freq: 1 # in epochs
 weight_decay: 0.05 # the default
 find_unused_params: False
-model_ema: True
+model_ema: True # TODO: determine if this is worth it (adds to eval time bottleneck during training)
 model_ema_decay: 0.9999
 model_ema_update_freq: 1 # in iterations
 
 # Eval
-step_eval: True # when it per epoch is < eval freq (results in <1 eval per epoch)
-epoch_eval: False
-eval_freq: 5000
-eval_metrics_freq: 5000
-eval_image_log_freq: 5000 # generating the images is huge bottleneck
-num_eval_metrics_samples: 1000 # Number of samples to use for evaluating image metrics during training.
+step_eval: False
+epoch_eval: True
+eval_freq: 3
+eval_metrics_freq: 3
+eval_image_log_freq: 3 # generating the images is huge bottleneck
+num_eval_metrics_samples: 5000 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 9
 eval_noise_schedule: DDIMScheduler
 num_eval_timesteps: 50

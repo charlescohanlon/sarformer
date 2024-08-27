@@ -22,6 +22,7 @@ from PIL import Image
 import cv2
 
 import albumentations as A
+from scipy.stats import iqr
 import numpy as np
 import torch
 import torchvision.transforms.functional as TF
@@ -357,11 +358,19 @@ class RGBTransform(ImageTransform):
 class DepthTransform(ImageTransform):
 
     def __init__(
-        self, standardize_depth=True, relative_norm=True, no_data_value=-9999.0
+        self,
+        standardize_depth=False,
+        minimax_scaling=False,
+        robust_scaling=False,
+        no_data_value=-9999.0,
     ):
+        assert (
+            standardize_depth + minimax_scaling + robust_scaling <= 1
+        ), "Only one of standardize_depth, minimax_scaling, or robust_scaling can be True"
         self.standardize_depth = standardize_depth
+        self.minimax_scaling = minimax_scaling
+        self.robust_scaling = robust_scaling
         self.no_data_value = no_data_value
-        self.relative_norm = relative_norm
 
     def depth_to_tensor(self, img):
         # Why? (can't use this with the no_data_value anyways)
@@ -373,34 +382,50 @@ class DepthTransform(ImageTransform):
         return img
 
     def depth_tensor_norm(self, img):
-        if self.relative_norm:
-            img = DepthTransform.depth_relative_normalization(
+        if self.robust_scaling:
+            img = DepthTransform.depth_robust_scaling(
                 img, no_data_value=self.no_data_value
             )
-        if self.standardize_depth:
+        elif self.minimax_scaling:
+            img = DepthTransform.depth_minmax_scaling(
+                img, no_data_value=self.no_data_value
+            )
+        elif self.standardize_depth:
             img = DepthTransform.truncated_depth_standardization(
                 img, thresh=0, no_data_value=self.no_data_value
             )
         return img
 
     @staticmethod
-    def depth_relative_normalization(depth, no_data_value=-9999.0):
+    def depth_robust_scaling(depth, no_data_value=-9999.0):
+        """Depth robust scaling
+
+        :param depth: Depth map
+        :param no_data_value: The value to be treated as no data
+        :return: Robustly scaled depth map
+        """
+        # Remove no-data values and nans
+        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
+        valid_vals = depth[removal_mask]
+
+        return (depth - np.median(valid_vals)) / (iqr(valid_vals) + 1e-6)
+
+    @staticmethod
+    def depth_minmax_scaling(depth, no_data_value=-9999.0):
         """Depth relative normalization
 
         :param depth: Depth map
-        :param no_data_value: the value to be treated as no data
+        :param no_data_value: The value to be treated as no data
         :return: Relative normalized depth map
         """
-        # Remove no-data values
-        valid_depth_vals = depth[depth != no_data_value]
+        # Remove no-data values and nans
+        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
+        valid_vals = depth[removal_mask]
 
-        # Remove nans and infs
-        valid_depth_vals = valid_depth_vals[np.isfinite(valid_depth_vals)]
+        min_val = valid_vals.min()
+        max_val = valid_vals.max()
 
-        min_val = valid_depth_vals.min()
-        max_val = valid_depth_vals.max()
-
-        return (depth - min_val) / (max_val - min_val)
+        return (depth - min_val) / (max_val - min_val + 1e-6)
 
     @staticmethod
     def truncated_depth_standardization(
@@ -416,11 +441,9 @@ class DepthTransform(ImageTransform):
         # Flatten depth and remove bottom and top 10% of values
         trunc_depth = torch.sort(depth.reshape(-1), dim=0)[0]
 
-        # Remove no-data values
-        trunc_depth = trunc_depth[trunc_depth != no_data_value]
-
-        # Remove nans and infs
-        trunc_depth = trunc_depth[np.isfinite(trunc_depth)]
+        # Remove no-data values and nans
+        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
+        trunc_depth = trunc_depth[removal_mask]
 
         trunc_depth = trunc_depth[
             int(thresh * trunc_depth.shape[0]) : int(
@@ -428,6 +451,26 @@ class DepthTransform(ImageTransform):
             )
         ]
         return (depth - trunc_depth.mean()) / torch.sqrt(trunc_depth.var() + 1e-6)
+
+    @staticmethod
+    def depth_artifact_mask(depth, no_data_value=-9999.0, outlier_threshold=16):
+        """Depth artifact masking
+        For masking artifacts that result from clipping of DEM tiffs (essentially masking extreme outliers)
+
+        :param depth: Depth map
+        :param no_data_value: The value to be treated as no data
+        :param outlier_threshold: The threshold for outlier removal (distance from median in IQRs)
+        :return: Depth artifact mask
+        """
+        # to avoid inflating the median and IQR with values that will be hidden anyways
+        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
+        filtered_vals = depth[removal_mask]
+
+        # inspired by robust scaling
+        dists_from_median = np.abs(depth - np.median(filtered_vals))
+        dists_in_iqrs = dists_from_median / (iqr(filtered_vals) + 1e-6)
+
+        return dists_in_iqrs <= outlier_threshold
 
     def load(self, path):
         sample = self.pil_loader(path)

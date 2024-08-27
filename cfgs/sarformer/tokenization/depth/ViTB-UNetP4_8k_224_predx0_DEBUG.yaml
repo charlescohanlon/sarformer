@@ -85,6 +85,6 @@ log_codebook_usage: True # also just to make it explicit
 show_user_warnings: False
 
 # Misc.
-device: cpu
-num_workers: 1
+device: cuda
+num_workers: 32
 cache_datasets: False

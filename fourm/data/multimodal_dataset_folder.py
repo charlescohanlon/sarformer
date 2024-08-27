@@ -22,7 +22,11 @@ import numpy as np
 import torch
 from torchvision.datasets.vision import VisionDataset
 
-from fourm.data.modality_transforms import AbstractTransform, get_transform_key
+from fourm.data.modality_transforms import (
+    AbstractTransform,
+    DepthTransform,
+    get_transform_key,
+)
 
 IMG_EXTENSIONS = (
     ".jpg",
@@ -366,7 +370,7 @@ class MultiModalDatasetFolder(VisionDataset):
         file_name = file_name.split(".")[0]
         return class_id, file_name
 
-    def _compute_no_data_mask(self, no_data_mods, sample_dict):
+    def compute_mask(self, no_data_mods, sample_dict):
         channel_dim = 0
         H, W = sample_dict[no_data_mods[0]].shape[1:3]
         mask = torch.ones(1, H, W, dtype=torch.bool)
@@ -376,8 +380,12 @@ class MultiModalDatasetFolder(VisionDataset):
             no_data_value = self.modality_info[mod]["no_data_value"]
 
             no_data_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
-            nan_mask = np.isfinite(sample).any(dim=channel_dim, keepdim=True)
+            nan_mask = np.isfinite(sample).all(dim=channel_dim, keepdim=True)
             mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
+
+            if mod == "depth":
+                artifact_mask = DepthTransform.depth_artifact_mask(sample, no_data_value)
+                mask = mask.logical_and(artifact_mask)
 
         return mask
 
@@ -425,7 +433,7 @@ class MultiModalDatasetFolder(VisionDataset):
                 raise ValueError(
                     f"No mask_value is set but some modalities require a mask: {potential_missing_data_mods}"
                 )
-            sample_dict["mask_valid"] = self._compute_no_data_mask(
+            sample_dict["mask_valid"] = self.compute_mask(
                 potential_missing_data_mods, sample_dict
             )
 
