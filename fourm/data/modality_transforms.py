@@ -359,17 +359,10 @@ class DepthTransform(ImageTransform):
 
     def __init__(
         self,
-        standardize_depth=False,
-        minimax_scaling=False,
-        robust_scaling=False,
+        norm_ops=[],
         no_data_value=-9999.0,
     ):
-        assert (
-            standardize_depth + minimax_scaling + robust_scaling <= 1
-        ), "Only one of standardize_depth, minimax_scaling, or robust_scaling can be True"
-        self.standardize_depth = standardize_depth
-        self.minimax_scaling = minimax_scaling
-        self.robust_scaling = robust_scaling
+        self.norm_ops = norm_ops
         self.no_data_value = no_data_value
 
     def depth_to_tensor(self, img):
@@ -382,18 +375,11 @@ class DepthTransform(ImageTransform):
         return img
 
     def depth_tensor_norm(self, img):
-        if self.robust_scaling:
-            img = DepthTransform.depth_robust_scaling(
-                img, no_data_value=self.no_data_value
-            )
-        elif self.minimax_scaling:
-            img = DepthTransform.depth_minmax_scaling(
-                img, no_data_value=self.no_data_value
-            )
-        elif self.standardize_depth:
-            img = DepthTransform.truncated_depth_standardization(
-                img, thresh=0, no_data_value=self.no_data_value
-            )
+        for op_str in self.norm_ops:
+            if not hasattr(DepthTransform, op_str):
+                raise ValueError(f"Invalid depth norm operation: {op_str}")
+            img = getattr(DepthTransform, op_str)(img, no_data_value=self.no_data_value)
+
         return img
 
     @staticmethod
@@ -429,7 +415,7 @@ class DepthTransform(ImageTransform):
 
     @staticmethod
     def truncated_depth_standardization(
-        depth, thresh: float = 0.1, no_data_value=-9999.0
+        depth, thresh: float = 0.0, no_data_value=-9999.0
     ):
         """Truncated depth standardization
 
@@ -470,7 +456,8 @@ class DepthTransform(ImageTransform):
         dists_from_median = np.abs(depth - np.median(filtered_vals))
         dists_in_iqrs = dists_from_median / (iqr(filtered_vals) + 1e-6)
 
-        return dists_in_iqrs <= outlier_threshold
+        # return mask w/ True to keep, False to remove
+        return dists_in_iqrs < outlier_threshold
 
     def load(self, path):
         sample = self.pil_loader(path)

@@ -504,8 +504,8 @@ MODALITY_TRANSFORMS = {
 }
 
 MODALITY_TRANSFORMS_DIVAE = {
-    "rgb": RGBTransform(imagenet_default_mean_and_std=False),
-    "depth": DepthTransform(standardize_depth=True),
+    "rgb": None,
+    "depth": None,
     "normal": NormalTransform(standardize_surface_normals=False),
     "mask_valid": MaskTransform(mask_pool_size=1),
     "semseg_coco": SemsegTransform(shift_idx_by_one=True),

@@ -28,7 +28,7 @@ import re
 import time
 import warnings
 from pathlib import Path
-from typing import Iterable, List, Set, Dict, Optional, Union, Callable
+from typing import Iterable, List, Set, Dict, Optional, Union
 import yaml
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -60,12 +60,9 @@ from torchmetrics.image.inception import InceptionScore
 
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 import diffusers.schedulers as diffusers_schedulers
-from fourm.vq.scheduling import DDPMScheduler, DDIMScheduler
 
 import fourm.utils as utils
 from fourm.data import build_wds_divae_dataloader
-from fourm.data import RandomCropImageAugmenter, CenterCropImageAugmenter
-import fourm.utils.data_constants as data_constants
 from fourm.utils import destandardize
 from fourm.utils.optim_factory import create_optimizer
 from fourm.utils import to_2tuple
@@ -77,10 +74,8 @@ from fourm.vq.vq_utils import compute_codebook_usage
 from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_DIVAE
 from fourm.data.modality_transforms import (
     DepthTransform,
-    MaskTransform,
     UnifiedDataTransform,
     RGBTransform,
-    NormalTransform,
 )
 from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
 
@@ -910,7 +905,8 @@ def main(args: argparse.Namespace) -> None:
         )
     elif args.domain == "depth":
         MODALITY_TRANSFORMS_DIVAE["depth"] = DepthTransform(
-            robust_scaling=True,
+            # carries out operations in order of list
+            norm_ops=["depth_minmax_scaling"],
             # (fills the empty regions after rotation with this)
             no_data_value=modality_info["depth"]["no_data_value"],
         )
@@ -1648,14 +1644,6 @@ def train_one_epoch(
             clean_images, x.get("mask_valid", None), mask_value=mask_value
         )
 
-        # Randomly sample an image size between the min and max for this batch and resize the images
-        res_idx = hash(str(it)) % len(train_res_choices)
-        image_size = train_res_choices[res_idx]
-        # NOTE: only using one image size
-        # clean_images = F.interpolate(
-        #     clean_images, image_size, mode="bilinear", align_corners=False
-        # )
-
         # Sample noise that we'll add to the images
         noise = torch.randn(clean_images.shape).to(device)
         # Sample a uniformly random timestep for each image
@@ -2026,14 +2014,6 @@ def evaluate(
             clean_images, x.get("mask_valid", None), mask_value=mask_value
         )
 
-        # Randomly sample an image size between the min and max for this batch and resize the images
-        res_idx = hash(str(step)) % len(train_res_choices)
-        image_size = train_res_choices[res_idx]
-        # NOTE: only using one image size
-        # clean_images = F.interpolate(
-        #     clean_images, image_size, mode="bilinear", align_corners=False
-        # )
-
         # Sample noise that we'll add to the images
         noise = torch.randn(clean_images.shape).to(device)
         # Sample a uniformly random timestep for each image
@@ -2149,6 +2129,8 @@ def eval_metrics(
     mae_metric = MeanAbsoluteError(sync_on_compute=True, compute_on_cpu=False).to(
         device
     )
+    # NOTE: data_range 1.0 expects that the input's max value is 1
+    # which usually means that the input is in [0, 1] range
     psnr_metric = PeakSignalNoiseRatio(
         data_range=1.0,
         reduction="elementwise_mean",
@@ -2191,9 +2173,9 @@ def eval_metrics(
         )
     else:
         fid_metric, lpips_metric, inception_metric = None, None, None
-    local_tokens = (
-        [] if log_codebook_usage else None
-    )  # Collects the encoded tokens for all images evaluated on each device
+
+    # Collects the encoded tokens for all images evaluated on each device
+    local_tokens = [] if log_codebook_usage else None
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     for x in metric_logger.log_every(
@@ -2206,12 +2188,6 @@ def eval_metrics(
         clean_images = mask_out_samples(
             clean_images, x.get("mask_valid", None), mask_value=mask_value
         )
-
-        # Resize image to eval size
-        # NOTE: only using one image size
-        # clean_images = F.interpolate(
-        #     clean_images, eval_size, mode="bilinear", align_corners=False
-        # )
 
         # Autoencode the images
         with torch.no_grad(), torch.amp.autocast(
@@ -2236,15 +2212,16 @@ def eval_metrics(
             gt = destandardize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
             reconst = destandardize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
 
-            # Was observing a bug with the output being just outside of [0, 1] due to rounding error
+            # Was observing a bug with the output being just outside [0, 1] due to rounding error
             gt = gt.clamp(0.0, 1.0)
             reconst = reconst.clamp(0.0, 1.0)
 
         elif domain in ["depth"]:
             # 1-channel per-sample standardized domains
             # TODO: if we're going to per-sample standardize we need to destandardize here
-            gt = clean_images[:, :1]
-            reconst = output[:, :1]
+            gt = clean_images[:, :1].contiguous()
+            # Was seeing torchmetric error without contiguous
+            reconst = output[:, :1].contiguous()
         elif domain in [
             "edge_occlusion",
             "edge_texture",
@@ -2433,12 +2410,6 @@ def eval_image_log(
             clean_images = mask_out_samples(
                 clean_images, x.get("mask_valid", None), mask_value=mask_value
             )
-
-            # Resize image to eval size
-            # NOTE: only using one image size
-            # clean_images = F.interpolate(
-            #     clean_images, eval_size, mode="bilinear", align_corners=False
-            # )
 
             # Autoencode the images
             with torch.no_grad(), torch.amp.autocast(

@@ -16,4 +16,4 @@ tokenizer_ckpts/
 
 job_scripts/
 slurm-*
-weird_runs/
+slurm_outputs/
