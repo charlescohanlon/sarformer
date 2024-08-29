@@ -1167,7 +1167,9 @@ def generate(
 
         # Draw several samples using the same conditioning
         for i in range(args.num_variations):
-            with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+            with torch.amp.autocast(
+                "cuda", dtype=dtype, enabled=dtype != torch.float32
+            ):
                 out_dict = gen_sampler.generate(
                     sample,
                     schedule,
@@ -1211,8 +1213,8 @@ def generate(
 
             # Super-resolution
             if gen_sampler_sr is not None:
-                with torch.cuda.amp.autocast(
-                    dtype=dtype, enabled=dtype != torch.float32
+                with torch.amp.autocast(
+                    "cuda", dtype=dtype, enabled=dtype != torch.float32
                 ):
                     sample_sr = create_superres_input(
                         out_dict,

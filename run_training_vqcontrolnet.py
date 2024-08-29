@@ -1500,7 +1500,7 @@ def train_one_epoch(
             clean_input, noise, timesteps
         )
 
-        with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
             model_output, code_loss = model(
                 clean_images, noisy_input, timesteps.to(device), prompt=caption
             )
@@ -1804,7 +1804,7 @@ def evaluate(
             clean_input, noise, timesteps
         )
 
-        with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
             model_output, code_loss = model(
                 clean_images, noisy_input, timesteps.to(device), prompt=caption
             )
@@ -1919,8 +1919,8 @@ def eval_metrics(
         )
 
         # Autoencode the images
-        with torch.no_grad(), torch.cuda.amp.autocast(
-            dtype=dtype, enabled=dtype != torch.float32
+        with torch.no_grad(), torch.amp.autocast(
+            "cuda", dtype=dtype, enabled=dtype != torch.float32
         ):
             output = unwrap_model(model).autoencode(
                 clean_images,
@@ -2052,8 +2052,8 @@ def eval_image_log(
             )
 
             # Autoencode the images
-            with torch.no_grad(), torch.cuda.amp.autocast(
-                dtype=dtype, enabled=dtype != torch.float32
+            with torch.no_grad(), torch.amp.autocast(
+                "cuda", dtype=dtype, enabled=dtype != torch.float32
             ):
                 output = unwrap_model(model).autoencode(
                     clean_images,

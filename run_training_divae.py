@@ -60,7 +60,7 @@ from torchmetrics.image.inception import InceptionScore
 
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 import diffusers.schedulers as diffusers_schedulers
-
+from fourm.vq.scheduling import DDPMScheduler, DDIMScheduler  # Don't remove, need these
 import fourm.utils as utils
 from fourm.data import build_wds_divae_dataloader
 from fourm.utils import destandardize
@@ -2428,16 +2428,8 @@ def eval_image_log(
                 gt = destandardize(clean_images[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
                 reconst = destandardize(output[:, :3], mean=NAIP_MEAN, std=NAIP_STD)
             elif domain in ["depth"]:
-                # 1-channel per-sample standardized domains
                 gt = clean_images[:, :1]
-                batch_min = rearrange(gt, "b c h w -> b (c h w)").min(1)[0][
-                    :, None, None, None
-                ]
-                batch_max = rearrange(gt, "b c h w -> b (c h w)").max(1)[0][
-                    :, None, None, None
-                ]
-                gt = (gt - batch_min) / (batch_max - batch_min)
-                reconst = (output[:, :1] - batch_min) / (batch_max - batch_min)
+                reconst = output[:, :1]
             elif domain in [
                 "edge_occlusion",
                 "edge_texture",
@@ -2474,6 +2466,27 @@ def eval_image_log(
                 reconst_bytes = (
                     255 * reconst.float().permute(0, 2, 3, 1).clamp(0, 1).cpu().numpy()
                 ).astype(np.uint8)
+            elif domain in ["depth"]:
+                gt_bytes = (
+                    255
+                    * gt.float()
+                    .repeat(1, 3, 1, 1)  # repeat to 3 channels for visualization
+                    .permute(0, 2, 3, 1)
+                    .clamp(0, 1)
+                    .cpu()
+                    .numpy()
+                ).astype(np.uint8)
+                reconst_bytes = (
+                    255
+                    * reconst.float()
+                    .repeat(1, 3, 1, 1)
+                    .permute(0, 2, 3, 1)
+                    .clamp(0, 1)
+                    .cpu()
+                    .numpy()
+                ).astype(np.uint8)
+            else:
+                raise ValueError(f"Unsupported domain for image logging {domain}")
 
             gt_imgs.extend([Image.fromarray(b) for b in gt_bytes])
             reconst_imgs.extend([Image.fromarray(b) for b in reconst_bytes])

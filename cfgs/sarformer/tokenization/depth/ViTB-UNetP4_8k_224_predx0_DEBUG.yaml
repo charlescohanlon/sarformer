@@ -57,7 +57,7 @@ eval_freq: 1
 eval_metrics_freq: 1
 eval_image_log_freq: 1
 num_eval_metrics_samples: 5000 # Number of samples to use for evaluating image metrics during training.
-num_logged_images: 0
+num_logged_images: 1
 eval_noise_schedule: DDIMScheduler
 num_eval_timesteps: 50
 input_size_eval: 224
@@ -75,7 +75,7 @@ data_path: '/scratch/bdej/cohanlon/unsupervised/train'
 eval_data_path: '/scratch/bdej/cohanlon/unsupervised/eval'
 
 # Logging
-log_wandb: False # Set to True to log to Weights & Biases
+log_wandb: True # Set to True to log to Weights & Biases
 wandb_project: depth_tokenizer
 wandb_entity: sarformer
 wandb_run_name: auto
@@ -87,3 +87,5 @@ show_user_warnings: False
 device: cuda
 num_workers: 32
 cache_datasets: False
+
+eval_only: True

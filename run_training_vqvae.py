@@ -1770,15 +1770,15 @@ def train_one_epoch(
         if "sam_mask" in domain and images.shape[0] == 0:
             continue
 
-        with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
             model_output, code_loss = model(images)
 
             # Reconstruction loss
             reconst_loss = compute_reconst_loss(model_output, images, loss_fn)
 
         # Perceptual loss
-        with torch.cuda.amp.autocast(
-            dtype=dtype_percept, enabled=dtype_percept != torch.float32
+        with torch.amp.autocast(
+            "cuda", dtype=dtype_percept, enabled=dtype_percept != torch.float32
         ):
             if percept_loss_fn is not None and percept_loss_weight > 0:
                 transform = unwrap_model(percept_loss_fn).percept_transform
@@ -2123,15 +2123,15 @@ def evaluate(
         if "sam_mask" in domain and images.shape[0] == 0:
             continue
 
-        with torch.cuda.amp.autocast(dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
             model_output, code_loss = model(images)
 
             # Reconstruction loss
             reconst_loss = compute_reconst_loss(model_output, images, loss_fn)
 
         # Perceptual loss
-        with torch.cuda.amp.autocast(
-            dtype=dtype_percept, enabled=dtype_percept != torch.float32
+        with torch.amp.autocast(
+            "cuda", dtype=dtype_percept, enabled=dtype_percept != torch.float32
         ):
             if percept_loss_fn is not None and percept_loss_weight > 0:
                 transform = unwrap_model(percept_loss_fn).percept_transform
@@ -2286,8 +2286,8 @@ def eval_metrics(
             continue
 
         # Autoencode the images
-        with torch.no_grad(), torch.cuda.amp.autocast(
-            dtype=dtype, enabled=dtype != torch.float32
+        with torch.no_grad(), torch.amp.autocast(
+            "cuda", dtype=dtype, enabled=dtype != torch.float32
         ):
             quant, _, tokens = unwrap_model(model).encode(images)
             output = unwrap_model(model).decode_quant(quant).float()
@@ -2510,8 +2510,8 @@ def eval_image_log(
                 continue
 
             # Autoencode the images
-            with torch.no_grad(), torch.cuda.amp.autocast(
-                dtype=dtype, enabled=dtype != torch.float32
+            with torch.no_grad(), torch.amp.autocast(
+                "cuda", dtype=dtype, enabled=dtype != torch.float32
             ):
                 output = unwrap_model(model).autoencode(images)
 
