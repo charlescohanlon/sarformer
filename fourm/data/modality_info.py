@@ -465,7 +465,7 @@ MODALITY_INFO = {
 # Note: @res suffix is ignored for modality transforms
 MODALITY_TRANSFORMS = {
     # 4M-7 modalities
-    "rgb": RGBTransform(imagenet_default_mean_and_std=True),
+    "rgb": None,
     "caption": CaptionTransform(aligned_captions=True),
     "det": DetectionTransform(
         det_threshold=0.6,
@@ -504,8 +504,13 @@ MODALITY_TRANSFORMS = {
 }
 
 MODALITY_TRANSFORMS_DIVAE = {
-    "rgb": None,
-    "depth": None,
+    "rgb": RGBTransform(
+        mean_and_std="naip", no_data_value=MODALITY_INFO["rgb"]["no_data_value"]
+    ),
+    "depth": DepthTransform(
+        norm_ops=["depth_minmax_scale"],
+        no_data_value=MODALITY_INFO["depth"]["no_data_value"],
+    ),
     "normal": NormalTransform(standardize_surface_normals=False),
     "mask_valid": MaskTransform(mask_pool_size=1),
     "semseg_coco": SemsegTransform(shift_idx_by_one=True),

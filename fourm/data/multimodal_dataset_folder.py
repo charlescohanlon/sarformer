@@ -370,25 +370,6 @@ class MultiModalDatasetFolder(VisionDataset):
         file_name = file_name.split(".")[0]
         return class_id, file_name
 
-    def compute_mask(self, no_data_mods, sample_dict):
-        channel_dim = 0
-        H, W = sample_dict[no_data_mods[0]].shape[1:3]
-        mask = torch.ones(1, H, W, dtype=torch.bool)
-        for mod in no_data_mods:
-            sample = sample_dict[mod]
-            assert sample.shape[channel_dim] == self.modality_info[mod]["num_channels"]
-            no_data_value = self.modality_info[mod]["no_data_value"]
-
-            no_data_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
-            nan_mask = np.isfinite(sample).all(dim=channel_dim, keepdim=True)
-            mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
-
-            if mod == "depth":
-                artifact_mask = DepthTransform.depth_artifact_mask(sample, no_data_value)
-                mask = mask.logical_and(artifact_mask)
-
-        return mask
-
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         """
         Args:
@@ -433,22 +414,47 @@ class MultiModalDatasetFolder(VisionDataset):
                 raise ValueError(
                     f"No mask_value is set but some modalities require a mask: {potential_missing_data_mods}"
                 )
-            sample_dict["mask_valid"] = self.compute_mask(
-                potential_missing_data_mods, sample_dict
-            )
+            mods_list = [
+                (name, self.modality_info[name]["no_data_value"], sample_dict[name])
+                for name in potential_missing_data_mods
+            ]
+            sample_dict["mask_valid"] = compute_mask(mods_list)
 
-        # This needs to be done after the mask is created otherwise the no_data_value is obscured by the standardization
-        if "rgb" in sample_dict:
-            sample_dict["rgb"] = self.modality_transforms["rgb"].rgb_tensor_norm(
-                sample_dict["rgb"]
-            )
-
-        if "depth" in sample_dict:
-            sample_dict["depth"] = self.modality_transforms["depth"].depth_tensor_norm(
-                sample_dict["depth"]
-            )
+        # normalizing needs to be done after the mask is created otherwise the no_data_value might be obscured
+        for mod in self.modalities:
+            key = get_transform_key(mod)
+            norm_name = f"{key}_tensor_norm"
+            if hasattr(self.modality_transforms[key], norm_name):
+                sample_dict[mod] = getattr(self.modality_transforms[key], norm_name)(
+                    sample_dict[mod]
+                )
 
         return sample_dict
 
     def __len__(self) -> int:
         return len(list(self.samples.values())[0])
+
+
+def compute_mask(mods_list: List[Tuple[str, float, torch.Tensor]]):
+    """Compute a mask to remove no-data values, nans/infs, and depth artifacts for an aligned input set of images.
+    Args:
+        mods_list: List of tuples containing the modality name, no_data_value, and the image tensor (in that order).
+
+    Returns:
+        torch.Tensor: A mask tensor in the same shape as the input images with True to keep, False to remove.
+    """
+    channel_dim = 0
+    H, W = mods_list[0][2].shape[-2:]
+    mask = torch.ones(1, H, W, dtype=torch.bool)  # True to keep, False to remove
+
+    # format of the mods_list: (mod_name, no_data_value, sample) where sample is image tensor
+    for mod_name, no_data_value, sample in mods_list:
+        no_data_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
+        nan_mask = np.isfinite(sample).all(dim=channel_dim, keepdim=True)
+        mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
+
+        if mod_name == "depth":
+            artifact_mask = DepthTransform.depth_artifact_mask(sample, no_data_value)
+            mask = mask.logical_and(artifact_mask)
+
+    return mask

@@ -60,7 +60,7 @@ from torchmetrics.image.inception import InceptionScore
 
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 import diffusers.schedulers as diffusers_schedulers
-from fourm.vq.scheduling import DDPMScheduler, DDIMScheduler  # Don't remove, need these
+from fourm.vq.scheduling import DDPMScheduler, DDIMScheduler  # DO NOT REMOVE
 import fourm.utils as utils
 from fourm.data import build_wds_divae_dataloader
 from fourm.utils import destandardize
@@ -1830,7 +1830,7 @@ def launch_evals(
 
     # (hopefully) helps with 'c10::Error' CUDA error: initialization error
     # see https://github.com/pytorch/pytorch/issues/67978#issuecomment-1661986812
-    # annoyingly, this error only happed once so far and never again
+    # annoyingly, this error happened a couple times so far and never again
     gc.collect()
     torch.cuda.empty_cache()
 

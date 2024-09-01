@@ -2,6 +2,26 @@
 
 ## Random Notes
 
+Depth data has inf
+
+Get NAIP and DEM equivalent for nonUS?
+
+Should log hparams and give runs unique IDs or something
+
+### Reducing Noise in Dataset
+
+[Data curation](https://atlan.com/data-curation-in-machine-learning/)
+
+### Stuff to Try
+
+- weight real data in loss function
+- regenerate MC @ 224
+    - stratified sampling of different regions
+    - regenerate corresponding LLM prompts
+- taking analytic approach to choosing eval split
+- optimize eval (wtf is running on CPU?)
+
+
 
 
 ## Tokenization

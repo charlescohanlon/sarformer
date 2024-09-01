@@ -71,8 +71,8 @@ rotation_resample_mode: bicubic
 # Data
 mask_value: 0
 domain: depth
-data_path: '/scratch/bdej/cohanlon/unsupervised/train'
-eval_data_path: '/scratch/bdej/cohanlon/unsupervised/eval'
+data_path: '/scratch/bdej/cohanlon/untokenized/train'
+eval_data_path: '/scratch/bdej/cohanlon/untokenized/eval'
 
 # Logging
 log_wandb: True # Set to True to log to Weights & Biases
