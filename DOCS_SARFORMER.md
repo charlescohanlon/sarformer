@@ -8,19 +8,55 @@ Get NAIP and DEM equivalent for nonUS?
 
 Should log hparams and give runs unique IDs or something
 
+The data we evaluate on has to be ALL real so no generated times or dates either
+
+Explanation:
+So the other day I was thinking and as you guys know pre-training with a masked modeling objective is only a bandaid,
+ideally we have all 1 million cases fully labeled. With 4M they pseudo label using powerful specialized models, then
+take all of that as input and predict it all to produce generative behavior. If we were to follow suit we'd be wasting
+a lot of time teaching our model to be a generative one. At first, this made sense because in an abstract way the model
+is also learning correlations between various features in the input. But what if, we don't use a masked modeling objective
+at all. Instead we create coordinate labels for all the synthetic and unlabeled cases too. Then we just use the heatmap
+generation objective on all of it. For the synthetic and unlabeled cases the model is still essentially learning an 
+association just with possible behaviors (of a lost person) and not with other features of the input. The question then
+becomes, how do we pseudo label the cases without knowing where they took place (or having a model that can predict that)?
+I thought of two ways,
+1. we use the agent-based approach that one paper was talking about
+    - for the unlabeled SAR cases we need some way of getting a center coordinate for the case
+2. we bucket the labeled data observations somehow, fit a bivariate distribution on them (with something like MLE) then
+sample from that for every synthetic case
+- we're also going to weight the real data in the loss
+
 ### Reducing Noise in Dataset
+
+Review how we did each of the imputations
 
 [Data curation](https://atlan.com/data-curation-in-machine-learning/)
 
 ### Stuff to Try
 
+- VQ-VAE for RGB and depth instead of DiVAE b/c we don't really care about reconstruction quality, we're more worried
+about the quality of the representation and VQ-VAE is less expensive to train
 - weight real data in loss function
 - regenerate MC @ 224
     - stratified sampling of different regions
     - regenerate corresponding LLM prompts
 - taking analytic approach to choosing eval split
 - optimize eval (wtf is running on CPU?)
+- use MLP tokenizer with structured data instead of wordpiece
 
+### Experiments and Visualizations
+
+- baseline model w/ only labeled data vs. labeled + unlabeled vs. labeled + unlabeled + synthetic
+- attention visualization
+    - take attention weights from encoder's first attention block?
+- dimensionality reduction
+    - take latent space from somewhere?
+- measure accuracy with model size?
+- vary euclidean dist loss vs no euclidean dist loss
+- domain adaptation: leave an SAR set out and see how well it does w/ zero-shot
+- contributions of a few modalities
+    - compare performance when not included
 
 
 

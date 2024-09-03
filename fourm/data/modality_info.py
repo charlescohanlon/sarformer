@@ -508,7 +508,7 @@ MODALITY_TRANSFORMS_DIVAE = {
         mean_and_std="naip", no_data_value=MODALITY_INFO["rgb"]["no_data_value"]
     ),
     "depth": DepthTransform(
-        norm_ops=["depth_minmax_scale"],
+        norm_ops=["depth_minmax_scaling"],
         no_data_value=MODALITY_INFO["depth"]["no_data_value"],
     ),
     "normal": NormalTransform(standardize_surface_normals=False),

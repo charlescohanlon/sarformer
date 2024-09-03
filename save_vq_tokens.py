@@ -28,7 +28,7 @@ from tqdm import tqdm
 
 import fourm.utils as utils
 import fourm.utils.clip as clip
-from fourm.data.modality_info import MODALITY_TRANSFORMS_DIVAE
+from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_DIVAE
 from fourm.vq import get_image_tokenizer
 import fourm.utils.clip as clip
 from fourm.data.multimodal_dataset_folder import compute_mask
@@ -81,7 +81,6 @@ class SaveVQDataset(Dataset):
         self.modality_info = modality_info
         self.mask_value = mask_value
         self.task_transforms = task_transforms
-        self.resample_mode = resample_mode
         self.dryrun = dryrun
 
         self.loader = lambda path: Image.open(path)
@@ -127,12 +126,10 @@ class SaveVQDataset(Dataset):
         img = self.loader(path)
         img = img.convert("RGB") if self.task in ["rgb", "normal"] else img
 
-        mod_name, class_id, file_id = path.split("/")[-3:]
+        class_id, file_id = path.split("/")[-2:]
         file_id = file_id.split(".")[0]
 
-        tokens_path = os.path.join(
-            self.tokens_root, mod_name, class_id, f"{file_id}.npy"
-        )
+        tokens_path = os.path.join(self.tokens_root, class_id, f"{file_id}.npy")
         if not self.dryrun:
             os.makedirs(os.path.dirname(tokens_path), exist_ok=True)
 
@@ -151,12 +148,15 @@ class SaveVQDataset(Dataset):
             )
             # Valid regions -> 1, Masked-out regions -> -1
             mask_valid = mask_valid.float() * 2 - 1
-            img_mod = torch.cat([img_mod, mask_valid], dim=0)  # Concat image with mask
 
         # Normalize image (must be done after masking)
         img_mod = getattr(self.task_transforms[self.task], f"{self.task}_tensor_norm")(
             img_mod
         )
+
+        # mask concatenated after normalization otherwise norm function breaks
+        if mask_valid is not None:
+            img_mod = torch.cat([img_mod, mask_valid], dim=0)  # Concat image with mask
 
         imgs.append(img_mod)
         imgs = torch.stack(imgs)
@@ -183,6 +183,7 @@ def main(args):
         root=os.path.join(args.data_root, args.split),
         tokens_dir=f"{args.task}_{args.folder_suffix}",
         task=loader_task,
+        modality_info=MODALITY_INFO,
         input_size=args.input_size,
         mask_value=args.mask_value,
         resample_mode=args.resample_mode,
@@ -247,6 +248,7 @@ def main(args):
             tokens = tokens.detach().cpu().numpy().astype(np.int16)
             all_tokens.append(tokens)
 
+        # this was for when it used to iterate through crop settings
         all_tokens = np.concatenate(all_tokens)
         all_tokens = rearrange(all_tokens, "(b n) d -> b n d", n=1)
 

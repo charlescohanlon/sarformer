@@ -15,5 +15,5 @@ tokenizer_ckpts/
 **.tif
 
 job_scripts/
-slurm-*
+checkpoints/
 slurm_outputs/

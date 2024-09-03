@@ -1,3 +1,5 @@
+#!/bin/bash
+
 HOME=/u/$USER
 source $HOME/.bashrc # to add micromamba to path
 cd $HOME/sarformer
