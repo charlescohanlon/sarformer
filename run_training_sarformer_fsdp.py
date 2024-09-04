@@ -457,11 +457,10 @@ def setup_modality_info(args):
 
     # Max tokens
     for mod in modality_info:
-        image_size, patch_size = modality_info[mod].get(
-            "input_size", args.input_size
-        ), modality_info[mod].get("patch_size", args.patch_size)
-        num_patches = (image_size // patch_size) ** 2
+        image_size = modality_info[mod].get("input_size", args.input_size) 
+        patch_size = modality_info[mod].get("patch_size", args.patch_size)
         if modality_info[mod]["type"] == "img":
+            num_patches = (image_size // patch_size) ** 2
             modality_info[mod]["max_tokens"] = num_patches
 
     return modality_info
@@ -637,9 +636,8 @@ def get_model(args, modality_info):
         info = modality_info[mod]
         if info.get("encoder_embedding", None) is not None:
             if info["type"] == "img":
-                image_size, patch_size = info.get(
-                    "input_size", args.input_size
-                ), info.get("patch_size", args.patch_size)
+                image_size = info.get("input_size", args.input_size)
+                patch_size = info.get("patch_size", args.patch_size)
                 encoder_embeddings[mod] = info["encoder_embedding"](
                     patch_size=patch_size, image_size=image_size
                 )
@@ -651,9 +649,8 @@ def get_model(args, modality_info):
         info = modality_info[mod]
         if info.get("decoder_embedding", None) is not None:
             if info["type"] == "img":
-                image_size, patch_size = info.get(
-                    "input_size", args.input_size
-                ), info.get("patch_size", args.patch_size)
+                image_size = info.get("input_size", args.input_size)
+                patch_size = info.get("patch_size", args.patch_size)
                 decoder_embeddings[mod] = info["decoder_embedding"](
                     patch_size=patch_size, image_size=image_size
                 )
