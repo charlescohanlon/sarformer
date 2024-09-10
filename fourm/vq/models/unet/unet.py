@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from abc import abstractmethod
-from typing import Dict, Union, Optional
+from typing import Union, Optional
 
 import math
 
@@ -37,38 +37,6 @@ from .nn import (
 
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
-
-
-class AttentionPool2d(nn.Module):
-    """
-    Adapted from CLIP: https://github.com/openai/CLIP/blob/main/clip/model.py
-    """
-
-    def __init__(
-        self,
-        spacial_dim: int,
-        embed_dim: int,
-        num_heads_channels: int,
-        output_dim: int = None,
-    ):
-        super().__init__()
-        self.positional_embedding = nn.Parameter(
-            torch.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
-        )
-        self.qkv_proj = conv_nd(1, embed_dim, 3 * embed_dim, 1)
-        self.c_proj = conv_nd(1, embed_dim, output_dim or embed_dim, 1)
-        self.num_heads = embed_dim // num_heads_channels
-        self.attention = QKVAttention(self.num_heads)
-
-    def forward(self, x):
-        b, c, *_ = x.shape
-        x = x.reshape(b, c, -1)  # NC(HW)
-        x = torch.cat([x.mean(dim=-1, keepdim=True), x], dim=-1)  # NC(HW+1)
-        x = x + self.positional_embedding[None, :, :].to(x.dtype)  # NC(HW+1)
-        x = self.qkv_proj(x)
-        x = self.attention(x)
-        x = self.c_proj(x)
-        return x[:, :, 0]
 
 
 class TimestepBlock(nn.Module):
@@ -294,7 +262,6 @@ class AttentionBlock(nn.Module):
         num_heads=1,
         num_head_channels=-1,
         use_checkpoint=False,
-        use_new_attention_order=False,
     ):
         super().__init__()
         self.channels = channels
@@ -308,12 +275,6 @@ class AttentionBlock(nn.Module):
         self.use_checkpoint = use_checkpoint
         self.norm = normalization(channels)
         self.qkv = conv_nd(1, channels, channels * 3, 1)
-        if use_new_attention_order:
-            # split qkv before split heads
-            self.attention = QKVAttention(self.num_heads)
-        else:
-            # split heads before split qkv
-            self.attention = QKVAttentionLegacy(self.num_heads)
 
         self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
 
@@ -324,72 +285,27 @@ class AttentionBlock(nn.Module):
         B, C, *spatial = x.shape
         x = x.reshape(B, C, -1)
         # TODO: should be pre and post norm (also this pre norm is out of order)
+        # see 4m's implementation of attention
         qkv = self.qkv(self.norm(x))
-        h = self.attention(qkv)
+        q, k, v = qkv.chunk(3, dim=1)
+
+        bs, width, length = qkv.shape
+        ch = width // (3 * self.num_heads)
+
+        scale = 1 / math.sqrt(math.sqrt(ch))
+        w = torch.einsum(
+            "b c n, b c d -> b n d",
+            (q * scale).view(bs * self.num_heads, ch, length),
+            (k * scale).view(bs * self.num_heads, ch, length),
+        )  # More stable with f16 than dividing afterwards
+        w = softmax1(w.float(), dim=-1).type(w.dtype)
+        h = torch.einsum(
+            "b t s, b c s -> b c t", w, v.reshape(bs * self.num_heads, ch, length)
+        )
+        h = h.reshape(bs, -1, length)
+
         h = self.proj_out(h)
         return (x + h).reshape(B, C, *spatial)
-
-
-class QKVAttentionLegacy(nn.Module):
-    """
-    A module which performs QKV attention. Matches legacy QKVAttention + input/ouput heads shaping
-    """
-
-    def __init__(self, n_heads):
-        super().__init__()
-        self.n_heads = n_heads
-
-    def forward(self, qkv):
-        """
-        Apply QKV attention.
-
-        :param qkv: an [N x (H * 3 * C) x T] tensor of Qs, Ks, and Vs.
-        :return: an [N x (H * C) x T] tensor after attention.
-        """
-        bs, width, length = qkv.shape
-        assert width % (3 * self.n_heads) == 0
-        ch = width // (3 * self.n_heads)
-        q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
-        scale = 1 / math.sqrt(math.sqrt(ch))
-        weight = torch.einsum(
-            "b c t, b c s -> b t s", q * scale, k * scale
-        )  # More stable with f16 than dividing afterwards
-        weight = softmax1(weight.float(), dim=-1).type(weight.dtype)
-        a = torch.einsum("bts,bcs->bct", weight, v)
-        return a.reshape(bs, -1, length)
-
-
-class QKVAttention(nn.Module):
-    """
-    A module which performs QKV attention and splits in a different order.
-    """
-
-    def __init__(self, n_heads):
-        super().__init__()
-        self.n_heads = n_heads
-
-    def forward(self, qkv):
-        """
-        Apply QKV attention.
-
-        :param qkv: an [N x (3 * H * C) x T] tensor of Qs, Ks, and Vs.
-        :return: an [N x (H * C) x T] tensor after attention.
-        """
-        bs, width, length = qkv.shape
-        assert width % (3 * self.n_heads) == 0
-        ch = width // (3 * self.n_heads)
-        q, k, v = qkv.chunk(3, dim=1)
-        scale = 1 / math.sqrt(math.sqrt(ch))
-        weight = torch.einsum(
-            "b c t, b c s -> b t s",
-            (q * scale).view(bs * self.n_heads, ch, length),
-            (k * scale).view(bs * self.n_heads, ch, length),
-        )  # More stable with f16 than dividing afterwards
-        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
-        a = torch.einsum(
-            "b t s, b c s -> b c t", weight, v.reshape(bs * self.n_heads, ch, length)
-        )
-        return a.reshape(bs, -1, length)
 
 
 class CrossAttentionBlock(nn.Module):
@@ -473,8 +389,6 @@ class UNetModel(ModelMixin, ConfigMixin):
                                of heads for upsampling. Deprecated.
     :param use_scale_shift_norm: use a FiLM-like conditioning mechanism.
     :param resblock_updown: use residual blocks for up/downsampling.
-    :param use_new_attention_order: use a different attention pattern for potentially
-                                    increased efficiency.
     """
 
     def __init__(
@@ -496,7 +410,6 @@ class UNetModel(ModelMixin, ConfigMixin):
         num_heads_upsample=-1,
         use_scale_shift_norm=False,
         resblock_updown=False,
-        use_new_attention_order=False,
     ):
         super().__init__()
         if cond_type not in ("cat", "xattn"):
@@ -555,7 +468,6 @@ class UNetModel(ModelMixin, ConfigMixin):
                             use_checkpoint=use_checkpoint,
                             num_heads=num_heads,
                             num_head_channels=num_head_channels,
-                            use_new_attention_order=use_new_attention_order,
                         )
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -601,7 +513,6 @@ class UNetModel(ModelMixin, ConfigMixin):
                     use_checkpoint=use_checkpoint,
                     num_heads=num_heads,
                     num_head_channels=num_head_channels,
-                    use_new_attention_order=use_new_attention_order,
                 )
                 if self.cond_type == "cat"
                 else CrossAttentionBlock(C, num_heads=num_heads)
@@ -640,7 +551,6 @@ class UNetModel(ModelMixin, ConfigMixin):
                             use_checkpoint=use_checkpoint,
                             num_heads=num_heads_upsample,
                             num_head_channels=num_head_channels,
-                            use_new_attention_order=use_new_attention_order,
                         )
                     )
                 if level and i == num_res_blocks:
