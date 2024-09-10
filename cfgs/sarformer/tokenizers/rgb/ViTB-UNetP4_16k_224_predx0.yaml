@@ -2,7 +2,7 @@ run_name: auto
 
 # Architecture
 encoder_type: vit_b_enc
-decoder_type: unet_patched
+decoder_type: unet_patched_cat_cond
 input_size_min: 224
 input_size_max: 224
 resolution_step: 1 # used as step in range to produce [input_size, input_size + resolution_step)
@@ -73,8 +73,8 @@ rotation_resample_mode: bicubic
 mask_value: 0
 domain: rgb
 mean_and_std: naip # we changed the functionaity of the imagenet_default_mean_and_std arg
-data_path: '/scratch/bdej/cohanlon/untokenized/train'
-eval_data_path: '/scratch/bdej/cohanlon/untokenized/eval'
+data_path: '/scratch/bdej/cohanlon/data/train'
+eval_data_path: '/scratch/bdej/cohanlon/data/eval'
 
 # Logging
 log_wandb: True

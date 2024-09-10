@@ -2,7 +2,7 @@ run_name: auto
 
 # Architecture
 encoder_type: vit_b_enc
-decoder_type: unet_patched
+decoder_type: unet_patched_cat_cond
 input_size_min: 224
 input_size_max: 448
 resolution_step: 32

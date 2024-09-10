@@ -2,7 +2,7 @@ run_name: auto
 
 # Architecture
 encoder_type: vit_b_enc
-decoder_type: unet_patched
+decoder_type: unet_patched_cat_cond
 input_size_min: 224
 input_size_max: 224
 resolution_step: 1 # for varying image resolutions
@@ -71,8 +71,8 @@ rotation_resample_mode: bicubic
 # Data
 mask_value: 0
 domain: depth
-data_path: '/scratch/bdej/cohanlon/untokenized/train'
-eval_data_path: '/scratch/bdej/cohanlon/untokenized/eval'
+data_path: '/scratch/bdej/cohanlon/data/train'
+eval_data_path: '/scratch/bdej/cohanlon/data/eval'
 
 # Logging
 log_wandb: True # Set to True to log to Weights & Biases

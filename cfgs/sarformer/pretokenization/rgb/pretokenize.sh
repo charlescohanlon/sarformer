@@ -22,7 +22,7 @@ micromamba activate -n sarformer
 python save_vq_tokens.py \
     --tokenizer_id "checkpoint-39" \
     --tokenizers_root "checkpoints/tokenizers/rgb/ViTB-UNetP4_16k_224_predx0" \
-    --data_root "/scratch/bdej/cohanlon/untokenized" \
+    --data_root "/scratch/bdej/cohanlon/data" \
     --split "train" \
     --input_size 224 \
     --task "rgb" \

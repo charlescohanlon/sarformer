@@ -22,7 +22,7 @@ micromamba activate -n sarformer
 python save_vq_tokens.py \
     --tokenizer_id "checkpoint-final" \
     --tokenizers_root "checkpoints/tokenizers/depth/ViTB-UNetP4_8k_224_predx0" \
-    --data_root "/scratch/bdej/cohanlon/untokenized" \
+    --data_root "/scratch/bdej/cohanlon/data" \
     --split "train" \
     --input_size 224 \
     --task "depth" \
@@ -32,4 +32,3 @@ python save_vq_tokens.py \
     --folder_suffix "toks" \
     --batch_size 96 \
     --num_workers 32 \
-    # --dry_run # creates but doesn't save tokens
