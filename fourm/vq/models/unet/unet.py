@@ -16,9 +16,7 @@ from typing import Dict, Union, Optional
 
 import math
 
-import numpy as np
 import torch
-import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
@@ -27,11 +25,6 @@ from fourm.models.fm_utils import softmax1
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.models.modeling_utils import ModelMixin
 
-from .fp16_util import (
-    convert_module_to_f16,
-    convert_module_to_f32,
-    convert_module_to_bf16,
-)
 from .nn import (
     checkpoint,
     conv_nd,
@@ -60,7 +53,7 @@ class AttentionPool2d(nn.Module):
     ):
         super().__init__()
         self.positional_embedding = nn.Parameter(
-            th.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
+            torch.randn(embed_dim, spacial_dim**2 + 1) / embed_dim**0.5
         )
         self.qkv_proj = conv_nd(1, embed_dim, 3 * embed_dim, 1)
         self.c_proj = conv_nd(1, embed_dim, output_dim or embed_dim, 1)
@@ -68,9 +61,9 @@ class AttentionPool2d(nn.Module):
         self.attention = QKVAttention(self.num_heads)
 
     def forward(self, x):
-        b, c, *_spatial = x.shape
+        b, c, *_ = x.shape
         x = x.reshape(b, c, -1)  # NC(HW)
-        x = th.cat([x.mean(dim=-1, keepdim=True), x], dim=-1)  # NC(HW+1)
+        x = torch.cat([x.mean(dim=-1, keepdim=True), x], dim=-1)  # NC(HW+1)
         x = x + self.positional_embedding[None, :, :].to(x.dtype)  # NC(HW+1)
         x = self.qkv_proj(x)
         x = self.attention(x)
@@ -279,7 +272,7 @@ class ResBlock(TimestepBlock):
             emb_out = emb_out[..., None]
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
-            scale, shift = th.chunk(emb_out, 2, dim=1)
+            scale, shift = torch.chunk(emb_out, 2, dim=1)
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
@@ -358,11 +351,11 @@ class QKVAttentionLegacy(nn.Module):
         ch = width // (3 * self.n_heads)
         q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
         scale = 1 / math.sqrt(math.sqrt(ch))
-        weight = th.einsum(
-            "bct,bcs->bts", q * scale, k * scale
+        weight = torch.einsum(
+            "b c t, b c s -> b t s", q * scale, k * scale
         )  # More stable with f16 than dividing afterwards
-        weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
-        a = th.einsum("bts,bcs->bct", weight, v)
+        weight = softmax1(weight.float(), dim=-1).type(weight.dtype)
+        a = torch.einsum("bts,bcs->bct", weight, v)
         return a.reshape(bs, -1, length)
 
 
@@ -738,7 +731,11 @@ class PatchedUNetCatCond(UNetModel):
         in_channels_p = in_channels * patch_size * patch_size + cond_channels
         out_channels_p = out_channels * patch_size * patch_size
         super().__init__(
-            in_channels=in_channels_p, out_channels=out_channels_p, *args, **kwargs
+            in_channels=in_channels_p,
+            out_channels=out_channels_p,
+            cond_type="cat",
+            *args,
+            **kwargs,
         )
         self.P_H, self.P_W = pair(patch_size)
         self.in_channels = in_channels
@@ -746,11 +743,11 @@ class PatchedUNetCatCond(UNetModel):
 
     def forward(
         self,
-        sample: th.FloatTensor,  # Shape (B, C, H, W)
-        timestep: Union[th.Tensor, float, int],
-        encoder_hidden_states: th.Tensor = None,  # Shape (B, D_C, H_C, W_C)
+        sample: torch.FloatTensor,  # Shape (B, C, H, W)
+        timestep: Union[torch.Tensor, float, int],
+        encoder_hidden_states: torch.Tensor = None,  # Shape (B, D_C, H_C, W_C)
         # Boolen tensor of shape (B, H_C, W_C). True for masked out pixels
-        cond_mask: Optional[th.BoolTensor] = None,
+        cond_mask: Optional[torch.BoolTensor] = None,
         **kwargs,
     ):
         B, C, H, W = sample.shape
@@ -779,7 +776,7 @@ class PatchedUNetCatCond(UNetModel):
         cond_upsampled = F.interpolate(
             encoder_hidden_states, (N_H, N_W), mode="nearest"
         )
-        x = th.cat([x, cond_upsampled], dim=1)
+        x = torch.cat([x, cond_upsampled], dim=1)
 
         # UNet forward pass in subspace
         x = super().forward(x, timestep, **kwargs)
@@ -820,7 +817,11 @@ class PatchedUNetXattnCond(UNetModel):
         in_channels_p = in_channels * patch_size * patch_size + cond_channels
         out_channels_p = out_channels * patch_size * patch_size
         super().__init__(
-            in_channels=in_channels_p, out_channels=out_channels_p, *args, **kwargs
+            in_channels=in_channels_p,
+            out_channels=out_channels_p,
+            cond_type="xattn",
+            *args,
+            **kwargs,
         )
         self.P_H, self.P_W = pair(patch_size)
         self.in_channels = in_channels
@@ -829,7 +830,7 @@ class PatchedUNetXattnCond(UNetModel):
     def forward(
         self,
         sample: torch.FloatTensor,  # Shape (B, C, H, W)
-        timestep: Union[th.Tensor, float, int],
+        timestep: Union[torch.Tensor, float, int],
         cond: torch.Tensor = None,  # Shape (B, N, D)
         **kwargs,
     ):
