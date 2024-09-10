@@ -573,7 +573,7 @@ class DiVAE(VQ):
 
     def __init__(
         self,
-        dec_type: str = "unet_patched",
+        dec_type: str = "unet_patched_cat_cond",
         num_train_timesteps: int = 1000,
         cls_free_guidance_dropout: float = 0.0,
         masked_cfg: bool = False,

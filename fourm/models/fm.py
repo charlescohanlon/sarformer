@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from fourm.utils.timm.registry import register_model
 from huggingface_hub import PyTorchModelHubMixin
 
-from .fm_utils import Block, DecoderBlock, LayerNorm
+from .fm_utils import EncoderBlock, DecoderBlock, LayerNorm
 from fourm.data.modality_info import MODALITY_INFO
 
 
@@ -146,7 +146,7 @@ class FourM(nn.Module):
 
         self.encoder = nn.ModuleList(
             [
-                Block(
+                EncoderBlock(
                     dim=dim,
                     num_heads=num_heads,
                     mlp_ratio=mlp_ratio,
