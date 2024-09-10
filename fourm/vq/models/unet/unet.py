@@ -96,12 +96,17 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     support it as an extra input.
     """
 
-    def forward(self, x, emb):
+    def forward(self, x, emb, cond=None):
         for layer in self:
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
             else:
-                x = layer(x)
+                # to support xattn in most of the sequential blocks used in unet
+                # no attention blocks are also timestep ones
+                if isinstance(layer, CrossAttentionBlock):
+                    x = layer(x, cond)
+                else:
+                    x = layer(x)
         return x
 
 
@@ -323,32 +328,13 @@ class AttentionBlock(nn.Module):
         return checkpoint(self._forward, (x,), self.parameters(), self.use_checkpoint)
 
     def _forward(self, x):
-        b, c, *spatial = x.shape
-        x = x.reshape(b, c, -1)
+        B, C, *spatial = x.shape
+        x = x.reshape(B, C, -1)
+        # TODO: should be pre and post norm (also this pre norm is out of order)
         qkv = self.qkv(self.norm(x))
         h = self.attention(qkv)
         h = self.proj_out(h)
-        return (x + h).reshape(b, c, *spatial)
-
-
-def count_flops_attn(model, _x, y):
-    """
-    A counter for the `thop` package to count the operations in an
-    attention operation.
-    Meant to be used like:
-        macs, params = thop.profile(
-            model,
-            inputs=(inputs, timestamps),
-            custom_ops={QKVAttention: QKVAttention.count_flops},
-        )
-    """
-    b, c, *spatial = y[0].shape
-    num_spatial = int(np.prod(spatial))
-    # We perform two matmuls with the same number of ops.
-    # The first computes the weight matrix, the second computes
-    # the combination of the value vectors.
-    matmul_ops = 2 * b * (num_spatial**2) * c
-    model.total_ops += th.DoubleTensor([matmul_ops])
+        return (x + h).reshape(B, C, *spatial)
 
 
 class QKVAttentionLegacy(nn.Module):
@@ -378,10 +364,6 @@ class QKVAttentionLegacy(nn.Module):
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = th.einsum("bts,bcs->bct", weight, v)
         return a.reshape(bs, -1, length)
-
-    @staticmethod
-    def count_flops(model, _x, y):
-        return count_flops_attn(model, _x, y)
 
 
 class QKVAttention(nn.Module):
@@ -416,17 +398,22 @@ class QKVAttention(nn.Module):
         )
         return a.reshape(bs, -1, length)
 
-    @staticmethod
-    def count_flops(model, _x, y):
-        return count_flops_attn(model, _x, y)
 
-
-class CrossAttention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, attn_drop=0.0, proj_drop=0.0):
+class CrossAttentionBlock(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        attn_drop=0.0,
+        proj_drop=0.0,
+        use_checkpoint=False,
+    ):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
+        self.use_checkpoint = use_checkpoint
 
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
         self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
@@ -435,9 +422,15 @@ class CrossAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, context):
+    def forward(self, x, cond):
+        return checkpoint(
+            self._forward, (x, cond), self.parameters(), self.use_checkpoint
+        )
+
+    def _forward(self, x, cond):
         B, N, C = x.shape
-        _, M, _ = context.shape
+        # B, N, C = x.shape
+        _, M, _ = cond.shape
 
         q = (
             self.q(x)
@@ -445,7 +438,7 @@ class CrossAttention(nn.Module):
             .permute(0, 2, 1, 3)
         )
         kv = (
-            self.kv(context)
+            self.kv(cond)
             .reshape(B, M, 2, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
@@ -541,18 +534,18 @@ class UNetModel(ModelMixin, ConfigMixin):
             nn.Linear(time_embed_dim, time_embed_dim),
         )
 
-        ch = input_ch = int(channel_mult[0] * model_channels)
+        C = input_ch = int(channel_mult[0] * model_channels)
         self.input_blocks = nn.ModuleList(
-            [TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))]
+            [TimestepEmbedSequential(conv_nd(dims, in_channels, C, 3, padding=1))]
         )
-        self._feature_size = ch
-        input_block_chans = [ch]
+        self._feature_size = C
+        input_block_chans = [C]
         ds = 1
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
                     ResBlock(
-                        ch,
+                        C,
                         time_embed_dim,
                         dropout,
                         out_channels=int(mult * model_channels),
@@ -561,11 +554,11 @@ class UNetModel(ModelMixin, ConfigMixin):
                         use_scale_shift_norm=use_scale_shift_norm,
                     )
                 ]
-                ch = int(mult * model_channels)
+                C = int(mult * model_channels)
                 if ds in attention_resolutions:
                     layers.append(
                         AttentionBlock(
-                            ch,
+                            C,
                             use_checkpoint=use_checkpoint,
                             num_heads=num_heads,
                             num_head_channels=num_head_channels,
@@ -573,14 +566,14 @@ class UNetModel(ModelMixin, ConfigMixin):
                         )
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
-                self._feature_size += ch
-                input_block_chans.append(ch)
+                self._feature_size += C
+                input_block_chans.append(C)
             if level != len(channel_mult) - 1:
-                out_ch = ch
+                out_ch = C
                 self.input_blocks.append(
                     TimestepEmbedSequential(
                         ResBlock(
-                            ch,
+                            C,
                             time_embed_dim,
                             dropout,
                             out_channels=out_ch,
@@ -591,18 +584,18 @@ class UNetModel(ModelMixin, ConfigMixin):
                         )
                         if resblock_updown
                         else Downsample(
-                            ch, conv_resample, dims=dims, out_channels=out_ch
+                            C, conv_resample, dims=dims, out_channels=out_ch
                         )
                     )
                 )
-                ch = out_ch
-                input_block_chans.append(ch)
+                C = out_ch
+                input_block_chans.append(C)
                 ds *= 2
-                self._feature_size += ch
+                self._feature_size += C
 
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
-                ch,
+                C,
                 time_embed_dim,
                 dropout,
                 dims=dims,
@@ -611,17 +604,17 @@ class UNetModel(ModelMixin, ConfigMixin):
             ),
             (
                 AttentionBlock(
-                    ch,
+                    C,
                     use_checkpoint=use_checkpoint,
                     num_heads=num_heads,
                     num_head_channels=num_head_channels,
                     use_new_attention_order=use_new_attention_order,
                 )
                 if self.cond_type == "cat"
-                else CrossAttention(ch, num_heads=num_heads)
+                else CrossAttentionBlock(C, num_heads=num_heads)
             ),
             ResBlock(
-                ch,
+                C,
                 time_embed_dim,
                 dropout,
                 dims=dims,
@@ -629,15 +622,15 @@ class UNetModel(ModelMixin, ConfigMixin):
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
         )
-        self._feature_size += ch
+        self._feature_size += C
 
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
-                ich = input_block_chans.pop()
+                in_chans = input_block_chans.pop()
                 layers = [
                     ResBlock(
-                        ch + ich,
+                        C + in_chans,
                         time_embed_dim,
                         dropout,
                         out_channels=int(model_channels * mult),
@@ -646,11 +639,11 @@ class UNetModel(ModelMixin, ConfigMixin):
                         use_scale_shift_norm=use_scale_shift_norm,
                     )
                 ]
-                ch = int(model_channels * mult)
+                C = int(model_channels * mult)
                 if ds in attention_resolutions:
                     layers.append(
                         AttentionBlock(
-                            ch,
+                            C,
                             use_checkpoint=use_checkpoint,
                             num_heads=num_heads_upsample,
                             num_head_channels=num_head_channels,
@@ -658,10 +651,10 @@ class UNetModel(ModelMixin, ConfigMixin):
                         )
                     )
                 if level and i == num_res_blocks:
-                    out_ch = ch
+                    out_ch = C
                     layers.append(
                         ResBlock(
-                            ch,
+                            C,
                             time_embed_dim,
                             dropout,
                             out_channels=out_ch,
@@ -671,14 +664,14 @@ class UNetModel(ModelMixin, ConfigMixin):
                             up=True,
                         )
                         if resblock_updown
-                        else Upsample(ch, conv_resample, dims=dims, out_channels=out_ch)
+                        else Upsample(C, conv_resample, dims=dims, out_channels=out_ch)
                     )
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
-                self._feature_size += ch
+                self._feature_size += C
 
         self.out_proj = nn.Sequential(
-            normalization(ch),
+            normalization(C),
             nn.SiLU(),
             zero_module(conv_nd(dims, input_ch, out_channels, 3, padding=1)),
         )
@@ -720,30 +713,6 @@ class UNetModel(ModelMixin, ConfigMixin):
             x = blk(x, emb)
 
         return self.out_proj(x)
-
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
-
-    def convert_to_fp32(self):
-        """
-        Convert the torso of the model to float32.
-        """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
-        self.output_blocks.apply(convert_module_to_f32)
-
-    def convert_to_bf16(self):
-        """
-        Convert the torso of the model to float32.
-        """
-        self.input_blocks.apply(convert_module_to_bf16)
-        self.middle_block.apply(convert_module_to_bf16)
-        self.output_blocks.apply(convert_module_to_bf16)
 
 
 class PatchedUNetCatCond(UNetModel):
