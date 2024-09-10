@@ -49,7 +49,7 @@ from fourm.data import (
     setup_sampling_mod_info,
 )
 from fourm.models import fm
-from fourm.models.fm_utils import Block, DecoderBlock
+from fourm.models.fm_utils import EncoderBlock, DecoderBlock
 from fourm.data.modality_info import MODALITY_INFO
 from fourm.utils import create_model
 from fourm.utils.optim_factory import create_optimizer
@@ -845,7 +845,7 @@ def main(args):
     fm_auto_wrap_policy = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
-            Block,
+            EncoderBlock,
             DecoderBlock,
         },
     )
@@ -882,7 +882,7 @@ def main(args):
             checkpoint_impl=CheckpointImpl.NO_REENTRANT,
         )
 
-        check_fn = lambda submodule: isinstance(submodule, Block) or isinstance(
+        check_fn = lambda submodule: isinstance(submodule, EncoderBlock) or isinstance(
             submodule, DecoderBlock
         )
 

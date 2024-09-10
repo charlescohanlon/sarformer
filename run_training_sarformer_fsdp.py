@@ -49,7 +49,7 @@ from fourm.data import (
     setup_sampling_mod_info,
 )
 from fourm.models import fm
-from fourm.models.fm_utils import Block, DecoderBlock
+from fourm.models.fm_utils import EncoderBlock, DecoderBlock
 from fourm.data.modality_info import MODALITY_INFO
 from fourm.utils import create_model
 from fourm.utils.optim_factory import create_optimizer
@@ -457,7 +457,7 @@ def setup_modality_info(args):
 
     # Max tokens
     for mod in modality_info:
-        image_size = modality_info[mod].get("input_size", args.input_size) 
+        image_size = modality_info[mod].get("input_size", args.input_size)
         patch_size = modality_info[mod].get("patch_size", args.patch_size)
         if modality_info[mod]["type"] == "img":
             num_patches = (image_size // patch_size) ** 2
@@ -842,7 +842,7 @@ def main(args):
     fm_auto_wrap_policy = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
-            Block,
+            EncoderBlock,
             DecoderBlock,
         },
     )
@@ -879,7 +879,7 @@ def main(args):
             checkpoint_impl=CheckpointImpl.NO_REENTRANT,
         )
 
-        check_fn = lambda submodule: isinstance(submodule, Block) or isinstance(
+        check_fn = lambda submodule: isinstance(submodule, EncoderBlock) or isinstance(
             submodule, DecoderBlock
         )
 
