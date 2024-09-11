@@ -26,17 +26,33 @@ from diffusers.configuration_utils import ConfigMixin
 from diffusers.models.modeling_utils import ModelMixin
 
 from .nn import (
-    checkpoint,
     conv_nd,
     avg_pool_nd,
     zero_module,
     normalization,
-    timestep_embedding,
 )
 
 
-def pair(t):
-    return t if isinstance(t, tuple) else (t, t)
+def timestep_embedding(timesteps, dim, max_period=10000):
+    """
+    Create sinusoidal timestep embeddings.
+    :param timesteps: a 1-D Tensor of N indices, one per batch element.
+                      These may be fractional.
+    :param dim: the dimension of the output.
+    :param max_period: controls the minimum frequency of the embeddings.
+    :return: an [N x dim] Tensor of positional embeddings.
+    """
+    half = dim // 2
+    freqs = torch.exp(
+        -math.log(max_period)
+        * torch.arange(start=0, end=half, dtype=torch.float32)
+        / half
+    ).to(device=timesteps.device)
+    args = timesteps[:, None].float() * freqs[None]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+    return embedding
 
 
 class TimestepBlock(nn.Module):
@@ -81,14 +97,16 @@ class Upsample(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None):
+    def __init__(self, in_channels, use_conv, signal_dim=2, out_channels=None):
         super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
+        self.channels = in_channels
+        self.out_channels = out_channels or in_channels
         self.use_conv = use_conv
-        self.dims = dims
+        self.dims = signal_dim
         if use_conv:
-            self.conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=1)
+            self.conv = conv_nd(
+                signal_dim, self.channels, self.out_channels, 3, padding=1
+            )
 
     def forward(self, x):
         assert x.shape[1] == self.channels
@@ -107,29 +125,29 @@ class Downsample(nn.Module):
     """
     A downsampling layer with an optional convolution.
 
-    :param channels: channels in the inputs and outputs.
+    :param in_channels: channels in the inputs and outputs.
     :param use_conv: a bool determining if a convolution is applied.
-    :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+    :param signal_dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
                  downsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None):
+    def __init__(self, in_channels, use_conv, dims=2, out_channels=None):
         super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
+        self.in_channels = in_channels
+        self.out_channels = out_channels or in_channels
         self.use_conv = use_conv
         self.dims = dims
         stride = 2 if dims != 3 else (1, 2, 2)
         if use_conv:
             self.op = conv_nd(
-                dims, self.channels, self.out_channels, 3, stride=stride, padding=1
+                dims, self.in_channels, self.out_channels, 3, stride=stride, padding=1
             )
         else:
-            assert self.channels == self.out_channels
+            assert self.in_channels == self.out_channels
             self.op = avg_pool_nd(dims, kernel_size=stride, stride=stride)
 
     def forward(self, x):
-        assert x.shape[1] == self.channels
+        assert x.shape[1] == self.in_channels
         return self.op(x)
 
 
@@ -137,55 +155,52 @@ class ResBlock(TimestepBlock):
     """
     A residual block that can optionally change the number of channels.
 
-    :param channels: the number of input channels.
+    :param in_channels: the number of input channels.
     :param emb_channels: the number of timestep embedding channels.
     :param dropout: the rate of dropout.
     :param out_channels: if specified, the number of out channels.
     :param use_conv: if True and out_channels is specified, use a spatial
         convolution instead of a smaller 1x1 convolution to change the
         channels in the skip connection.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
-    :param use_checkpoint: if True, use gradient checkpointing on this module.
-    :param up: if True, use this block for upsampling.
-    :param down: if True, use this block for downsampling.
+    :param signal_dim: determines if the signal is 1D, 2D, or 3D.
+    :param upsample: if True, use this block for upsampling.
+    :param downsample: if True, use this block for downsampling.
     """
 
     def __init__(
         self,
-        channels,
+        in_channels,
         emb_channels,
         dropout,
         out_channels=None,
         use_conv=False,
         use_scale_shift_norm=False,
-        dims=2,
-        use_checkpoint=False,
-        up=False,
-        down=False,
+        signal_dim=2,
+        upsample=False,
+        downsample=False,
     ):
         super().__init__()
-        self.channels = channels
+        self.in_channels = in_channels
         self.emb_channels = emb_channels
         self.dropout = dropout
-        self.out_channels = out_channels or channels
+        self.out_channels = out_channels or in_channels
         self.use_conv = use_conv
-        self.use_checkpoint = use_checkpoint
         self.use_scale_shift_norm = use_scale_shift_norm
 
         self.in_layers = nn.Sequential(
-            normalization(channels),
+            normalization(in_channels),
             nn.SiLU(),
-            conv_nd(dims, channels, self.out_channels, 3, padding=1),
+            conv_nd(signal_dim, in_channels, self.out_channels, 3, padding=1),
         )
 
-        self.updown = up or down
+        self.updown = upsample or downsample
 
-        if up:
-            self.h_upd = Upsample(channels, False, dims)
-            self.x_upd = Upsample(channels, False, dims)
-        elif down:
-            self.h_upd = Downsample(channels, False, dims)
-            self.x_upd = Downsample(channels, False, dims)
+        if upsample:
+            self.h_upd = Upsample(in_channels, False, signal_dim)
+            self.x_upd = Upsample(in_channels, False, signal_dim)
+        elif downsample:
+            self.h_upd = Downsample(in_channels, False, signal_dim)
+            self.x_upd = Downsample(in_channels, False, signal_dim)
         else:
             self.h_upd = self.x_upd = nn.Identity()
 
@@ -201,18 +216,20 @@ class ResBlock(TimestepBlock):
             nn.SiLU(),
             nn.Dropout(p=dropout),
             zero_module(
-                conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)
+                conv_nd(signal_dim, self.out_channels, self.out_channels, 3, padding=1)
             ),
         )
 
-        if self.out_channels == channels:
+        if self.out_channels == in_channels:
             self.skip_connection = nn.Identity()
         elif use_conv:
             self.skip_connection = conv_nd(
-                dims, channels, self.out_channels, 3, padding=1
+                signal_dim, in_channels, self.out_channels, 3, padding=1
             )
         else:
-            self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
+            self.skip_connection = conv_nd(
+                signal_dim, in_channels, self.out_channels, 1
+            )
 
     def forward(self, x, emb):
         """
@@ -222,11 +239,6 @@ class ResBlock(TimestepBlock):
         :param emb: an [N x emb_channels] Tensor of timestep embeddings.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        return checkpoint(
-            self._forward, (x, emb), self.parameters(), self.use_checkpoint
-        )
-
-    def _forward(self, x, emb):
         if self.updown:
             in_rest, in_conv = self.in_layers[:-1], self.in_layers[-1]
             h = in_rest(x)
@@ -249,63 +261,48 @@ class ResBlock(TimestepBlock):
         return self.skip_connection(x) + h
 
 
-class AttentionBlock(nn.Module):
-    """
-    An attention block that allows spatial positions to attend to each other.
-    Originally ported from here, but adapted to the N-d case.
-    https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
-    """
-
+class SelfAttentionBlock(nn.Module):
     def __init__(
         self,
-        channels,
-        num_heads=1,
-        num_head_channels=-1,
-        use_checkpoint=False,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        proj_bias=True,
+        attn_drop=0.0,
+        proj_drop=0.0,
     ):
         super().__init__()
-        self.channels = channels
-        if num_head_channels == -1:
-            self.num_heads = num_heads
-        else:
-            assert (
-                channels % num_head_channels == 0
-            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
-            self.num_heads = channels // num_head_channels
-        self.use_checkpoint = use_checkpoint
-        self.norm = normalization(channels)
-        self.qkv = conv_nd(1, channels, channels * 3, 1)
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = head_dim**-0.5
 
-        self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim, bias=proj_bias)
+        self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x):
-        return checkpoint(self._forward, (x,), self.parameters(), self.use_checkpoint)
+        B, C, H, W = x.shape
+        x = rearrange(x, "b c h w -> b (h w) c")
 
-    def _forward(self, x):
-        B, C, *spatial = x.shape
-        x = x.reshape(B, C, -1)
-        # TODO: should be pre and post norm (also this pre norm is out of order)
-        # see 4m's implementation of attention
-        qkv = self.qkv(self.norm(x))
-        q, k, v = qkv.chunk(3, dim=1)
+        _, N, _ = x.shape
 
-        bs, width, length = qkv.shape
-        ch = width // (3 * self.num_heads)
-
-        scale = 1 / math.sqrt(math.sqrt(ch))
-        w = torch.einsum(
-            "b c n, b c d -> b n d",
-            (q * scale).view(bs * self.num_heads, ch, length),
-            (k * scale).view(bs * self.num_heads, ch, length),
-        )  # More stable with f16 than dividing afterwards
-        w = softmax1(w.float(), dim=-1).type(w.dtype)
-        h = torch.einsum(
-            "b t s, b c s -> b c t", w, v.reshape(bs * self.num_heads, ch, length)
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
         )
-        h = h.reshape(bs, -1, length)
+        q, k, v = qkv.unbind(0)
 
-        h = self.proj_out(h)
-        return (x + h).reshape(B, C, *spatial)
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+
+        attn = softmax1(attn, dim=-1)
+        attn = self.attn_drop(attn)
+
+        h = (attn @ v).transpose(1, 2).reshape(B, N, -1)
+        h = self.proj(h)
+        h = self.proj_drop(h)
+        return (x + h).reshape(B, C, H, W)
 
 
 class CrossAttentionBlock(nn.Module):
@@ -316,13 +313,11 @@ class CrossAttentionBlock(nn.Module):
         qkv_bias=False,
         attn_drop=0.0,
         proj_drop=0.0,
-        use_checkpoint=False,
     ):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
-        self.use_checkpoint = use_checkpoint
 
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
         self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
@@ -332,13 +327,10 @@ class CrossAttentionBlock(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, cond):
-        return checkpoint(
-            self._forward, (x, cond), self.parameters(), self.use_checkpoint
-        )
+        B, C, H, W = x.shape
+        x = rearrange(x, "b c h w -> b (h w) c")
 
-    def _forward(self, x, cond):
-        B, N, C = x.shape
-        # B, N, C = x.shape
+        _, N, _ = x.shape
         _, M, _ = cond.shape
 
         q = (
@@ -351,22 +343,23 @@ class CrossAttentionBlock(nn.Module):
             .reshape(B, M, 2, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
-        k, v = kv[0], kv[1]
+        k, v = kv.unbind(0)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = softmax1(attn, dim=-1)  # NOTE: we're using the custom softmax here
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, -1)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
+        h = (attn @ v).transpose(1, 2).reshape(B, N, -1)
+        h = self.proj(h)
+        h = self.proj_drop(h)
+        return (x + h).reshape(B, C, H, W)
 
 
 class UNetModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding.
 
+    :param image_size: the size of the input image.
     :param in_channels: channels in the input Tensor.
     :param model_channels: base channel count for the model.
     :param out_channels: channels in the output Tensor.
@@ -375,18 +368,15 @@ class UNetModel(ModelMixin, ConfigMixin):
         attention will take place. May be a set, list, or tuple.
         For example, if this contains 4, then at 4x downsampling, attention
         will be used.
+    :param attn_drop: the dropout probability in the attention mechanism.
+    :param proj_drop: the dropout probability in the projection after the attention.
     :param dropout: the dropout probability.
     :param channel_mult: channel multiplier for each level of the UNet.
     :param conv_resample: if True, use learned convolutions for upsampling and
         downsampling.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
+    :param signal_dim: determines if the signal is 1D, 2D, or 3D.
     :param cond_type: the method used to apply conditioning (either 'cat' or 'xattn').
-    :param use_checkpoint: use gradient checkpointing to reduce memory usage.
     :param num_heads: the number of attention heads in each attention layer.
-    :param num_heads_channels: if specified, ignore num_heads and instead use
-                               a fixed channel width per attention head.
-    :param num_heads_upsample: works with num_heads to set a different number
-                               of heads for upsampling. Deprecated.
     :param use_scale_shift_norm: use a FiLM-like conditioning mechanism.
     :param resblock_updown: use residual blocks for up/downsampling.
     """
@@ -399,27 +389,22 @@ class UNetModel(ModelMixin, ConfigMixin):
         out_channels=3,
         num_res_blocks=3,
         attention_resolutions=[8, 16],
+        attn_drop=0.0,
+        proj_drop=0.0,
         dropout=0,
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
-        dims=2,
+        signal_dim=2,
         cond_type="cat",
-        use_checkpoint=False,
         num_heads=1,
-        num_head_channels=-1,
-        num_heads_upsample=-1,
         use_scale_shift_norm=False,
         resblock_updown=False,
     ):
         super().__init__()
         if cond_type not in ("cat", "xattn"):
             raise ValueError(f"Unknown cond_type {cond_type}")
-        if num_heads_upsample == -1:
-            num_heads_upsample = num_heads
 
         self.image_size = image_size
-        self.sample_size = image_size  # For compatibility
-        self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks
@@ -428,10 +413,7 @@ class UNetModel(ModelMixin, ConfigMixin):
         self.dropout = dropout
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
-        self.use_checkpoint = use_checkpoint
         self.num_heads = num_heads
-        self.num_head_channels = num_head_channels
-        self.num_heads_upsample = num_heads_upsample
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -440,143 +422,163 @@ class UNetModel(ModelMixin, ConfigMixin):
             nn.Linear(time_embed_dim, time_embed_dim),
         )
 
-        C = input_ch = int(channel_mult[0] * model_channels)
-        self.input_blocks = nn.ModuleList(
-            [TimestepEmbedSequential(conv_nd(dims, in_channels, C, 3, padding=1))]
-        )
-        self._feature_size = C
-        input_block_chans = [C]
-        ds = 1
+        # Downsampling
+        self.input_blocks = nn.ModuleList([])
+        input_block_chans = []
         for level, mult in enumerate(channel_mult):
+            downsample_rate = mult
+            level_chans = model_channels * mult
+
             for _ in range(num_res_blocks):
                 layers = [
                     ResBlock(
-                        C,
-                        time_embed_dim,
-                        dropout,
-                        out_channels=int(mult * model_channels),
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
+                        in_channels=level_chans,
+                        emb_channels=time_embed_dim,
+                        dropout=dropout,
+                        out_channels=level_chans,
+                        signal_dim=signal_dim,
                         use_scale_shift_norm=use_scale_shift_norm,
                     )
                 ]
-                C = int(mult * model_channels)
-                if ds in attention_resolutions:
+                if downsample_rate in attention_resolutions:
                     layers.append(
-                        AttentionBlock(
-                            C,
-                            use_checkpoint=use_checkpoint,
+                        SelfAttentionBlock(
+                            dim=level_chans,
                             num_heads=num_heads,
-                            num_head_channels=num_head_channels,
+                            attn_drop=attn_drop,
+                            proj_drop=proj_drop,
+                        )
+                        if cond_type == "cat"
+                        else CrossAttentionBlock(
+                            dim=level_chans,
+                            num_heads=num_heads,
+                            attn_drop=attn_drop,
+                            proj_drop=proj_drop,
                         )
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
-                self._feature_size += C
-                input_block_chans.append(C)
-            if level != len(channel_mult) - 1:
-                out_ch = C
+                self._feature_size += level_chans
+                input_block_chans.append(level_chans)
+
+            if level < len(channel_mult) - 1:
+                downsampled_chans = model_channels * channel_mult[level + 1]
                 self.input_blocks.append(
                     TimestepEmbedSequential(
                         ResBlock(
-                            C,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
+                            in_channels=level_chans,
+                            emb_channels=time_embed_dim,
+                            dropout=dropout,
+                            out_channels=downsampled_chans,
+                            signal_dim=signal_dim,
                             use_scale_shift_norm=use_scale_shift_norm,
-                            down=True,
+                            downsample=True,
                         )
                         if resblock_updown
                         else Downsample(
-                            C, conv_resample, dims=dims, out_channels=out_ch
+                            in_channels=level_chans,
+                            use_conv=conv_resample,
+                            dims=signal_dim,
+                            out_channels=downsampled_chans,
                         )
                     )
                 )
-                C = out_ch
-                input_block_chans.append(C)
-                ds *= 2
-                self._feature_size += C
+                input_block_chans.append(downsampled_chans)
+                self._feature_size += downsampled_chans
 
+        # Middle
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
-                C,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
+                in_channels=level_chans,
+                emb_channels=time_embed_dim,
+                dropout=dropout,
+                signal_dim=signal_dim,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
             (
-                AttentionBlock(
-                    C,
-                    use_checkpoint=use_checkpoint,
+                SelfAttentionBlock(
+                    dim=level_chans,
                     num_heads=num_heads,
-                    num_head_channels=num_head_channels,
+                    attn_drop=attn_drop,
+                    proj_drop=proj_drop,
                 )
                 if self.cond_type == "cat"
-                else CrossAttentionBlock(C, num_heads=num_heads)
+                else CrossAttentionBlock(
+                    dim=level_chans,
+                    num_heads=num_heads,
+                    attn_drop=attn_drop,
+                    proj_drop=proj_drop,
+                )
             ),
             ResBlock(
-                C,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
+                in_channels=level_chans,
+                emb_channels=time_embed_dim,
+                dropout=dropout,
+                signal_dim=signal_dim,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
         )
-        self._feature_size += C
 
+        # Upsampling
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
-            for i in range(num_res_blocks + 1):
-                in_chans = input_block_chans.pop()
+            downsample_rate = mult
+            level_chans = model_channels * mult
+
+            for _ in range(num_res_blocks):
+                skip_connection_chans = input_block_chans[level]
+                level_and_skip_chans = level_chans + skip_connection_chans
                 layers = [
                     ResBlock(
-                        C + in_chans,
+                        level_and_skip_chans,
                         time_embed_dim,
                         dropout,
                         out_channels=int(model_channels * mult),
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
+                        signal_dim=signal_dim,
                         use_scale_shift_norm=use_scale_shift_norm,
                     )
                 ]
-                C = int(model_channels * mult)
-                if ds in attention_resolutions:
+                if downsample_rate in attention_resolutions:
                     layers.append(
-                        AttentionBlock(
-                            C,
-                            use_checkpoint=use_checkpoint,
-                            num_heads=num_heads_upsample,
-                            num_head_channels=num_head_channels,
+                        SelfAttentionBlock(
+                            dim=level_and_skip_chans,
+                            num_heads=num_heads,
+                            attn_drop=attn_drop,
+                            proj_drop=proj_drop,
+                        )
+                        if cond_type == "cat"
+                        else CrossAttentionBlock(
+                            dim=level_and_skip_chans,
+                            num_heads=num_heads,
+                            attn_drop=attn_drop,
+                            proj_drop=proj_drop,
                         )
                     )
-                if level and i == num_res_blocks:
-                    out_ch = C
+                if level > 0:
+                    upsampled_chans = input_block_chans[level - 1]
                     layers.append(
                         ResBlock(
-                            C,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
+                            in_channels=level_and_skip_chans,
+                            emb_channels=time_embed_dim,
+                            dropout=dropout,
+                            out_channels=upsampled_chans,
+                            signal_dim=signal_dim,
                             use_scale_shift_norm=use_scale_shift_norm,
-                            up=True,
+                            upsample=True,
                         )
                         if resblock_updown
-                        else Upsample(C, conv_resample, dims=dims, out_channels=out_ch)
+                        else Upsample(
+                            in_channels=level_and_skip_chans,
+                            use_conv=conv_resample,
+                            signal_dim=signal_dim,
+                            out_channels=upsampled_chans,
+                        )
                     )
-                    ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
-                self._feature_size += C
 
         self.out_proj = nn.Sequential(
-            normalization(C),
+            normalization(level_and_skip_chans),
             nn.SiLU(),
-            zero_module(conv_nd(dims, input_ch, out_channels, 3, padding=1)),
+            zero_module(conv_nd(signal_dim, in_channels, out_channels, 3, padding=1)),
         )
 
     def forward(self, x, timesteps, cond=None, **kwargs):
@@ -603,17 +605,14 @@ class UNetModel(ModelMixin, ConfigMixin):
         hs = []  # Hidden states for skip connections
 
         for blk in self.input_blocks:
-            x = blk(x, emb)
+            x = blk(x, emb, cond)
             hs.append(x)
 
-        if self.cond_type == "xattn":
-            x = self.middle_block(x, emb, cond)
-        else:
-            x = self.middle_block(x, emb)
+        x = self.middle_block(x, emb, cond)
 
         for blk in self.output_blocks:
             x = torch.cat([x, hs.pop()], dim=1)
-            x = blk(x, emb)
+            x = blk(x, emb, cond)
 
         return self.out_proj(x)
 
@@ -647,7 +646,7 @@ class PatchedUNetCatCond(UNetModel):
             *args,
             **kwargs,
         )
-        self.P_H, self.P_W = pair(patch_size)
+        self.P_H, self.P_W = patch_size, patch_size
         self.in_channels = in_channels
         self.out_channels = out_channels
 
@@ -719,13 +718,12 @@ class PatchedUNetXattnCond(UNetModel):
         self,
         in_channels: int,
         out_channels: int,
-        cond_channels: int,
         patch_size: int,
         *args,
         **kwargs,
     ):
-        in_channels_p = in_channels * patch_size * patch_size + cond_channels
-        out_channels_p = out_channels * patch_size * patch_size
+        in_channels_p = in_channels * patch_size**2
+        out_channels_p = out_channels * patch_size**2
         super().__init__(
             in_channels=in_channels_p,
             out_channels=out_channels_p,
@@ -733,7 +731,7 @@ class PatchedUNetXattnCond(UNetModel):
             *args,
             **kwargs,
         )
-        self.P_H, self.P_W = pair(patch_size)
+        self.P_H, self.P_W = patch_size, patch_size
         self.in_channels = in_channels
         self.out_channels = out_channels
 
