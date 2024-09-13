@@ -28,7 +28,8 @@ class SARFormer(nn.Module):
         encoder_depth: Number of encoder blocks.
         num_heads_encoder: Number of attention heads in the encoder.
         num_heads_backbone: Number of attention heads in the backbone.
-        mlp_ratio: Ratio of mlp hidden dim to embedding dim.
+        mlp_ratio_encoder: Ratio of mlp hidden dim to embedding dim. The backbone's (effective) 
+                           mlp ratio is part of the architecture variant function.
         qkv_bias: If True, add a learnable bias to query, key, value projections.
         proj_bias: If True, add a learnable bias to the last projection of the attention block.
         mlp_bias: If True, add a learnable bias to linear layers in the MLP / feed-forward.
@@ -51,7 +52,7 @@ class SARFormer(nn.Module):
         encoder_depth: int = 12,
         num_heads_encoder: int = 12,
         num_heads_backbone: int = 8,
-        mlp_ratio: float = 4.0,
+        mlp_ratio_encoder: float = 4.0,
         qkv_bias: bool = True,
         proj_bias: bool = True,
         mlp_bias: bool = True,
@@ -88,7 +89,7 @@ class SARFormer(nn.Module):
                 EncoderBlock(
                     dim=dim,
                     num_heads=num_heads_encoder,
-                    mlp_ratio=mlp_ratio,
+                    mlp_ratio=mlp_ratio_encoder,
                     qkv_bias=qkv_bias,
                     proj_bias=proj_bias,
                     mlp_bias=mlp_bias,
@@ -114,7 +115,6 @@ class SARFormer(nn.Module):
             drop_path_rate=drop_path_rate_backbone,
             num_heads=num_heads_backbone,
             qkv_bias=qkv_bias,
-            mlp_ratio=mlp_ratio,
             act_layer=act_layer,
         )
 
@@ -311,13 +311,13 @@ def fm_b_12e_patched_convnext_unet_b_swiglu_qknorm_nobias(
     model = SARFormer(
         encoder_embeddings=encoder_embeddings,
         modality_info=MODALITY_INFO,
-        decoder_name="patched_convnext_unet_b",
+        backbone_name="patched_convnext_unet_b",
         dim=768,
         encoder_depth=12,
         num_heads_encoder=12,
         num_heads_backbone=8,
-        mlp_ratio=4.0,
-        qkv_bias=False,
+        mlp_ratio_encoder=4.0,
+        qkv_bias=False,  # TODO: why no biases? should use no bias for backbone as well?
         proj_bias=False,
         mlp_bias=False,
         norm_layer=partial(LayerNorm, eps=1e-6, bias=False),
