@@ -1,6 +1,4 @@
 from abc import abstractmethod
-import re
-from typing import Union
 
 import math
 
@@ -158,7 +156,7 @@ class ConvNeXtBlock(TimestepBlock):
         output_dim=None,
         drop_path=0.0,
         layer_scale_init_value=1e-6,
-        mlp_ratio=4,
+        mlp_ratio=4.0,
         act_layer=nn.GELU,
     ):
         super().__init__()
@@ -175,9 +173,10 @@ class ConvNeXtBlock(TimestepBlock):
         self.norm = nn.LayerNorm(dim, eps=1e-6)
 
         # pointwise/1x1 convs, implemented with linear layers
-        self.pwconv1 = nn.Linear(dim, mlp_ratio * dim)
+        hidden_dim = int(mlp_ratio * dim)
+        self.pwconv1 = nn.Linear(dim, hidden_dim)
         self.act = act_layer()
-        self.pwconv2 = nn.Linear(mlp_ratio * dim, output_dim)
+        self.pwconv2 = nn.Linear(hidden_dim, output_dim)
 
         self.gamma = (
             nn.Parameter(
@@ -286,13 +285,14 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         drop_path_rate=0,
         channel_mult=(1, 2, 4, 8, 16),
         num_heads=8,
-        qkv_bias=False,
-        mlp_ratio=4,
+        qkv_bias=True,
+        mlp_ratio=4.0,
         act_layer=nn.GELU,
     ):
         super().__init__()
         self.model_channels = model_channels
-        time_embed_dim = model_channels * mlp_ratio
+        time_embed_dim = int(model_channels * mlp_ratio)
+        print(model_channels, time_embed_dim)
         self.time_embed = nn.Sequential(
             nn.Linear(model_channels, time_embed_dim),
             act_layer(),
@@ -562,5 +562,6 @@ def patched_convnext_unet_b(**kwargs):
         model_channels=64,
         num_conv_blocks=3,
         channel_mult=(1, 2, 4, 8, 16),  # the last element is the middle block
+        mlp_ratio=4.0,
         **kwargs,
     )
