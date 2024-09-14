@@ -292,7 +292,6 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         super().__init__()
         self.model_channels = model_channels
         time_embed_dim = int(model_channels * mlp_ratio)
-        print(model_channels, time_embed_dim)
         self.time_embed = nn.Sequential(
             nn.Linear(model_channels, time_embed_dim),
             act_layer(),

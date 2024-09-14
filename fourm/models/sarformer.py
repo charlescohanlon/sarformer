@@ -1,3 +1,4 @@
+from json import encoder
 import math
 from functools import partial
 from typing import Any, Dict, Tuple, Union
@@ -28,7 +29,7 @@ class SARFormer(nn.Module):
         encoder_depth: Number of encoder blocks.
         num_heads_encoder: Number of attention heads in the encoder.
         num_heads_backbone: Number of attention heads in the backbone.
-        mlp_ratio_encoder: Ratio of mlp hidden dim to embedding dim. The backbone's (effective) 
+        mlp_ratio_encoder: Ratio of mlp hidden dim to embedding dim. The backbone's (effective)
                            mlp ratio is part of the architecture variant function.
         qkv_bias: If True, add a learnable bias to query, key, value projections.
         proj_bias: If True, add a learnable bias to the last projection of the attention block.
@@ -195,34 +196,26 @@ class SARFormer(nn.Module):
 
         Args:
             mod_dict (dict): A dictionary containing information for each modality.
-                             Expected keys for each modality are 'x' (input tokens),
-                             'emb' (embeddings), 'input_mask', etc.
+                             Expected keys for each modality are 'x' (input tokens)
+                             and 'emb' (embeddings)
 
         Returns:
             tuple:
                 - encoder_tokens_all (torch.Tensor): Concatenated encoder tokens from all modalities. Shape (B, O, D) where O is the total number of all encoder tokens.
                 - emb_all (torch.Tensor): Concatenated encoder embeddings from all modalities. Shape (B, O, D)
-                - mod_mask_all (torch.Tensor): Concatenated integer mask marking the modality type for each encoder token. Shape (B, O)
         """
 
         encoder_tokens_all = []
         emb_all = []
-        mod_mask_all = []
 
-        for mod, d in mod_dict.items():
+        for d in mod_dict.values():
             encoder_tokens_all.append(d["x"])
             emb_all.append(d["emb"])
-            mod_mask_all.append(
-                torch.full_like(
-                    d["input_mask"], self.modality_info[mod]["id"], dtype=torch.int16
-                )
-            )
 
         encoder_tokens_all = torch.cat(encoder_tokens_all, dim=1)
         emb_all = torch.cat(emb_all, dim=1)
-        mod_mask_all = torch.cat(mod_mask_all, dim=1)
 
-        return encoder_tokens_all, emb_all, mod_mask_all
+        return encoder_tokens_all, emb_all
 
     def prep_encoder_tokens(
         self, mod_dict: Dict[str, Dict[str, torch.Tensor]]
@@ -238,17 +231,13 @@ class SARFormer(nn.Module):
             tuple:
                 - encoder_tokens (torch.Tensor): The encoder tokens. Shape (B, N, D)
                 - encoder_emb (torch.Tensor): The encoder embeddings. Shape (B, N, D)
-                - mod_mask (torch.Tensor): A integer mask marking the modality type for each encoder token. Shape (B, N)
 
         """
-        encoder_tokens_all, emb_all, mod_mask_all = self.cat_encoder_tensors(mod_dict)
+        encoder_tokens_all, emb_all = self.cat_encoder_tensors(mod_dict)
 
-        # shuffle the encoder tokens instead of quasi-shuffling them
-        ids_shuffle = torch.randperm(
-            encoder_tokens_all.shape[1],
-            device=encoder_tokens_all.device,
-            requires_grad=False,
-        )
+        # shuffle the encoder tokens
+        B, N, _ = encoder_tokens_all.shape
+        ids_shuffle = torch.randint(N, size=(B, N)).argsort(dim=1)
 
         # collect tokens in the order of ids_keep (this is supposedly faster than tensor indexing)
         encoder_tokens = torch.gather(
@@ -261,16 +250,15 @@ class SARFormer(nn.Module):
             dim=1,
             index=repeat(ids_shuffle, "b n -> b n d", d=emb_all.shape[2]),
         )
-        mod_mask = torch.gather(mod_mask_all, dim=1, index=ids_shuffle)
 
-        return encoder_tokens, encoder_emb, mod_mask
+        return encoder_tokens, encoder_emb
 
     def forward(
         self,
         mod_dict: Dict[str, Dict[str, torch.Tensor]],
         noisy_image: torch.Tensor,
         timesteps: torch.Tensor,
-    ) -> Union[Dict[str, torch.Tensor], Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
+    ) -> torch.Tensor:
         """Forward pass of the SARFormer model.
 
         Args:
@@ -287,7 +275,7 @@ class SARFormer(nn.Module):
         encoder_mod_dict = {
             mod: self.encoder_embeddings[mod](d) for mod, d in mod_dict.items()
         }
-        encoder_tokens, encoder_emb, _ = self.prep_encoder_tokens(encoder_mod_dict)
+        encoder_tokens, encoder_emb = self.prep_encoder_tokens(encoder_mod_dict)
 
         # Encoder
         x = encoder_tokens + encoder_emb
