@@ -982,7 +982,6 @@ def main(args: argparse.Namespace) -> None:
             transforms_dict=MODALITY_TRANSFORMS_DIVAE,
             image_augmenter=image_augmenter_train,
             resample_mode=args.rotation_resample_mode,
-            add_sizes=args.resolution_cond,
         )
         dataset_train = MultiModalDatasetFolder(
             root=args.data_path,
@@ -991,7 +990,6 @@ def main(args: argparse.Namespace) -> None:
             modality_transforms=MODALITY_TRANSFORMS_DIVAE,
             modality_info=modality_info,
             transform=transforms_train,
-            cache=args.cache_datasets,
         )
 
         num_training_steps_per_epoch = len(dataset_train) // (
@@ -1026,7 +1024,6 @@ def main(args: argparse.Namespace) -> None:
             transforms_dict=MODALITY_TRANSFORMS_DIVAE,
             image_augmenter=image_augmenter_val,
             resample_mode=args.rotation_resample_mode,
-            add_sizes=args.resolution_cond,
         )
 
         dataset_val = MultiModalDatasetFolder(
@@ -1036,7 +1033,6 @@ def main(args: argparse.Namespace) -> None:
             modality_transforms=MODALITY_TRANSFORMS_DIVAE,
             modality_info=modality_info,
             transform=transforms_val,
-            cache=args.cache_datasets,
         )
         if args.dist_eval:
             if len(dataset_val) % num_tasks != 0:
@@ -1075,7 +1071,6 @@ def main(args: argparse.Namespace) -> None:
                 transform=transforms_val,
                 pre_shuffle=True,
                 max_samples=args.num_eval_metrics_samples,
-                cache=args.cache_datasets,
             )
             if args.dist_eval:
                 if len(dataset_metrics) % num_tasks != 0:
@@ -1118,7 +1113,6 @@ def main(args: argparse.Namespace) -> None:
                 transform=transforms_val,
                 pre_shuffle=True,
                 max_samples=args.num_logged_images,
-                cache=args.cache_datasets,
             )
             # No dist eval, we only run it on the main process
             sampler_image_log = torch.utils.data.SequentialSampler(dataset_image_log)

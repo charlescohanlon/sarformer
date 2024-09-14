@@ -42,7 +42,7 @@ except Exception as e:
 from fourm.data.modality_transforms import (
     get_transform_key,
     get_transform_resolution,
-    MetadataTransform,
+    StructuredDataTransform,
 )
 from fourm.utils.data_constants import (
     IMAGENET_DEFAULT_MEAN,
@@ -553,7 +553,7 @@ def decode_human_poses(mod_dict, tokenizers, text_tokenizer, key="human_poses"):
     return imgs
 
 
-metadata_transform = MetadataTransform(
+metadata_transform = StructuredDataTransform(
     shuffle=False, random_trunc=False, return_chunks=False
 )
 

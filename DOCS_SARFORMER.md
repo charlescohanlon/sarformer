@@ -10,6 +10,9 @@ Should log hparams and give runs unique IDs or something
 
 The data we evaluate on has to be ALL real so no generated times or dates either
 
+For when we use a learned tokenizer for the structured data, include columns for whether a value was imputed or not
+(See that youtube vid)
+
 Explanation:
 So the other day I was thinking and as you guys know pre-training with a masked modeling objective is only a bandaid,
 ideally we have all 1 million cases fully labeled. With 4M they pseudo label using powerful specialized models, then
