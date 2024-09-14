@@ -13,43 +13,28 @@
 # limitations under the License.
 from functools import partial
 
-import fourm.utils.data_constants as data_constants
+import numpy as np
+import pandas as pd
+
 from fourm.data.modality_transforms import (
     CaptionTransform,
     DepthTransform,
-    DetectionTransform,
-    MaskTransform,
-    NormalTransform,
     RGBTransform,
-    SemsegTransform,
     TokTransform,
-    CaptionEmbTransform,
-    MetadataTransform,
-    HumanPoseTransform,
-    ColorPaletteTransform,
-    SAMInstanceTokTransform,
-    SAMInstanceTransform,
+    StructuredDataTransform,
+    TargetDistributionTransform,
 )
 from fourm.models.decoder_embeddings import (
     ImageTokenDecoderEmbedding,
     SequenceDecoderEmbedding,
 )
 from fourm.models.encoder_embeddings import (
-    ImageEncoderEmbedding,
     ImageTokenEncoderEmbedding,
     SequenceEncoderEmbedding,
-    SequenceEmbEncoderEmbedding,
 )
 from fourm.utils import generate_uint15_hash
 
 MODALITY_INFO = {
-    "rgb": {  # used for tokenizer training
-        "type": "img",
-        "num_channels": 3,
-        "id": generate_uint15_hash("rgb"),
-        "path": "rgb",
-        "no_data_value": 0,
-    },
     "caption": {
         "vocab_size": 30_000,
         "encoder_embedding": partial(
@@ -62,6 +47,13 @@ MODALITY_INFO = {
         "max_tokens": 256,
         "type": "seq",
         "id": generate_uint15_hash("caption"),
+        "path": None,  # path None indicates data comes from csv
+    },
+    "target_distribution": {
+        "type": "img",
+        "num_channels": 1,
+        "id": generate_uint15_hash("target_distribution"),
+        "path": None,
     },
     "tok_rgb@224": {
         "input_size": 224,
@@ -87,13 +79,21 @@ MODALITY_INFO = {
         "id": generate_uint15_hash("tok_depth@224"),
         "pretokenized": True,
     },
+    "rgb": {  # used for tokenizer training
+        "type": "img",
+        "num_channels": 3,
+        "id": generate_uint15_hash("rgb"),
+        "path": "rgb",
+        "no_data_value": 0,
+    },
     "depth": {  # used for tokenizer training
         "type": "img",
         "num_channels": 1,
         "id": generate_uint15_hash("depth"),
         "no_data_value": -9999.0,
+        "path": "depth",
     },
-    "metadata": {
+    "structureddata": {
         "vocab_size": 30_000,
         "encoder_embedding": partial(
             SequenceEncoderEmbedding,
@@ -110,53 +110,57 @@ MODALITY_INFO = {
             sincos_pos_emb=True,
         ),
         "min_tokens": 0,
-        "max_tokens": 40,  # At most 2x19=38 for 19 metadata types, +1 for EOS, +1 for sentinel
+        "max_tokens": None,
         "type": "seq",
-        "id": generate_uint15_hash("metadata"),
-        "shared_vocab": ["caption"],
-        "path": "metadata",
+        "id": generate_uint15_hash("structureddata"),
+        "path": None,
     },
 }
 
-# Note: @res suffix is ignored for modality transforms
+ID_MAP = {  # for structured data transform
+    k: i
+    for i, k in enumerate(
+        [
+            "10m_u_component_of_wind",
+            "10m_v_component_of_wind",
+            "2m_dewpoint_temperature",
+            "2m_temperature",
+            "surface_pressure",
+            "total_precipitation",
+            "total_cloud_cover",
+            "low_cloud_cover",
+            "slope_of_subgridscale_orography",
+            "high_vegetation_cover",
+            "surface_net_solar_radiation",
+            "soil_type",
+            "trapping_layer_base_height",
+            "total_column_water_vapour",
+            "skin_temperature",
+            "precipitation_type",
+            "duration",
+            "start_date",
+            "start_time",
+            "prompt",
+            "min_elevation",
+            "max_elevation",
+        ]
+    )
+}
+
 MODALITY_TRANSFORMS = {
-    # 4M-7 modalities
-    "rgb": None,
-    "caption": CaptionTransform(aligned_captions=True),
-    "det": DetectionTransform(
-        det_threshold=0.6,
-        det_max_instances=None,
-        bbox_order="dist_to_orig",
-        coord_bins=1000,
-        min_visibility=0.0,
-    ),
+    "caption": CaptionTransform(caption_name="prompt"),
     "tok_rgb": TokTransform(),
     "tok_depth": TokTransform(),
-    "tok_normal": TokTransform(),
-    "tok_semseg": TokTransform(),
-    "tok_clip": TokTransform(),
-    # 4M-21 modalities
-    "t5_caption": CaptionEmbTransform(),
-    "metadata": MetadataTransform(
-        special_vmin=0,
-        special_vmax=999,
-        shuffle=True,
-        random_trunc=False,
-        return_chunks=True,
+    "structureddata": StructuredDataTransform(
+        id_map=ID_MAP, shuffle=True, value_type=np.float16
     ),
-    "human_poses": HumanPoseTransform(coord_bins=1000),
-    "color_palette": ColorPaletteTransform(coord_bins=1000),
-    "sam_instance": SAMInstanceTokTransform(
-        image_size=224, points_per_side=7, point_order="random"
+    "target_distribution": TargetDistributionTransform(
+        spatial_res=2,
+        img_size=224,
+        offset_name="offset",
+        bearing_name="offset_bearing",
+        resize_ratio=224 / 1000,
     ),
-    "tok_canny_edge": TokTransform(),
-    "tok_sam_edge": TokTransform(),
-    "tok_dinov2": TokTransform(),
-    "tok_imagebind": TokTransform(),
-    "tok_dinov2_global": TokTransform(),
-    "tok_imagebind_global": TokTransform(),
-    # Other
-    "mask_valid": MaskTransform(mask_pool_size=1),
 }
 
 MODALITY_TRANSFORMS_DIVAE = {
@@ -167,16 +171,4 @@ MODALITY_TRANSFORMS_DIVAE = {
         norm_ops=["depth_minmax_scaling"],
         no_data_value=MODALITY_INFO["depth"]["no_data_value"],
     ),
-    "normal": NormalTransform(standardize_surface_normals=False),
-    "mask_valid": MaskTransform(mask_pool_size=1),
-    "semseg_coco": SemsegTransform(shift_idx_by_one=True),
-    "canny_edge": RGBTransform(imagenet_default_mean_and_std=False),
-    "human_poses": HumanPoseTransform(coord_bins=1000, only_pose=True),
-    "sam_mask": SAMInstanceTransform(mask_size=64, max_instance_n=1),
-}
-
-MODALITY_TRANSFORMS_VQCONTROLNET = {
-    "rgb": RGBTransform(imagenet_default_mean_and_std=False),
-    "mask_valid": MaskTransform(mask_pool_size=1),
-    "caption": CaptionTransform(aligned_captions=True),
 }
