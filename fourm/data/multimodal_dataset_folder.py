@@ -19,6 +19,8 @@ from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 import numpy as np
+import pandas as pd
+from tokenizers import Tokenizer
 import torch
 from torchvision.datasets.vision import VisionDataset
 
@@ -75,6 +77,7 @@ def make_dataset(
     directory: str,
     class_to_idx: Dict[str, int],
     extensions: Optional[Tuple[str, ...]] = None,
+    valid_ids: Optional[List[str]] = None,
     is_valid_file: Optional[Callable[[str], bool]] = None,
     cache_path: Optional[str] = None,
 ) -> List[Tuple[str, int]]:
@@ -104,7 +107,9 @@ def make_dataset(
         for root, _, fnames in sorted(os.walk(target_dir, followlinks=True)):
             for fname in sorted(fnames):
                 path = os.path.join(root, fname)
-                if is_valid_file(path):
+                # TODO: find some way to make this more efficient
+                is_valid_id = valid_ids is None or fname.split(".")[0] in valid_ids
+                if is_valid_file(path) and is_valid_id:
                     item = path, class_index
                     instances.append(item)
     if cache_path is not None:
@@ -115,114 +120,9 @@ def make_dataset(
     return instances
 
 
-class DatasetFolder(VisionDataset):
-    """A generic data loader where the samples are arranged in this way: ::
-
-        root/class_x/xxx.ext
-        root/class_x/xxy.ext
-        root/class_x/xxz.ext
-
-        root/class_y/123.ext
-        root/class_y/nsdf3.ext
-        root/class_y/asd932_.ext
-
-    Args:
-        root (string): Root directory path.
-        loader (callable): A function to load a sample given its path.
-        extensions (tuple[string]): A list of allowed extensions.
-            both extensions and is_valid_file should not be passed.
-        transform (callable, optional): A function/transform that takes in
-            a sample and returns a transformed version.
-            E.g, ``transforms.RandomCrop`` for images.
-        target_transform (callable, optional): A function/transform that takes
-            in the target and transforms it.
-        is_valid_file (callable, optional): A function that takes path of a file
-            and check if the file is a valid file (used to check of corrupt logs)
-            both extensions and is_valid_file should not be passed.
-
-     Attributes:
-        classes (list): List of the class names sorted alphabetically.
-        class_to_idx (dict): Dict with items (class_name, class_index).
-        samples (list): List of (sample path, class_index) tuples
-        targets (list): The class_index value for each image in the dataset
-    """
-
-    def __init__(
-        self,
-        root: str,
-        loader: Callable[[str], Any],
-        extensions: Optional[Tuple[str, ...]] = None,
-        transform: Optional[Callable] = None,
-        target_transform: Optional[Callable] = None,
-        is_valid_file: Optional[Callable[[str], bool]] = None,
-    ) -> None:
-        super(DatasetFolder, self).__init__(
-            root, transform=transform, target_transform=target_transform
-        )
-        classes, class_to_idx = self._find_classes(self.root)
-        samples = make_dataset(self.root, class_to_idx, extensions, is_valid_file)
-        if len(samples) == 0:
-            msg = "Found 0 logs in subfolders of: {}\n".format(self.root)
-            if extensions is not None:
-                msg += "Supported extensions are: {}".format(",".join(extensions))
-            raise RuntimeError(msg)
-
-        self.loader = loader
-        self.extensions = extensions
-
-        self.classes = classes
-        self.class_to_idx = class_to_idx
-        self.samples = samples
-        self.targets = [s[1] for s in samples]
-
-    def _find_classes(self, dir: str) -> Tuple[List[str], Dict[str, int]]:
-        """
-        Finds the class folders in a dataset.
-
-        Args:
-            dir (string): Root directory path.
-
-        Returns:
-            tuple: (classes, class_to_idx) where classes are relative to (dir), and class_to_idx is a dictionary.
-
-        Ensures:
-            No class is a subdirectory of another.
-        """
-        classes = [d.name for d in os.scandir(dir) if d.is_dir()]
-        classes.sort()
-        class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
-        return classes, class_to_idx
-
-    def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (sample, target) where target is class_index of the target class.
-        """
-        while True:
-            try:
-                path, target = self.samples[index]
-                sample = self.loader(path)
-                break
-            except Exception as e:
-                print(e)
-                index = random.randint(0, len(self.samples) - 1)
-
-        if self.transform is not None:
-            sample = self.transform(sample)
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return sample, target
-
-    def __len__(self) -> int:
-        return len(self.samples)
-
-
 class MultiModalDatasetFolder(VisionDataset):
-    """A generic multi-modal dataset loader where the samples are arranged in this way:
+    """
+    A generic multi-modal dataset loader where the samples are arranged in this way:
 
         root/modality_a/class_x/xxx.ext
         root/modality_a/class_y/xxy.ext
@@ -237,25 +137,21 @@ class MultiModalDatasetFolder(VisionDataset):
         modalities (list): List of modalities as strings
         modality_paths (dict): Dict of paths to modalities
         modality_transforms (dict): Dict of transforms for each modality
-        loader (callable): A function to load a sample given its path.
+        modalities_info (dict): Dict of information for each modality
+        valid_ids (list, optional): List of valid ids to load. If None, all ids are loaded.
         transform (callable, optional): A function/transform that takes in
             a sample and returns a transformed version.
             E.g, ``transforms.RandomCrop`` for images.
         target_transform (callable, optional): A function/transform that takes
+        tokenizer (Tokenizer, optional): Tokenizer to use for tokenizing sequential data.
             in the target and transforms it.
+        data_df (pd.DataFrame, optional): Dataframe containing data for modalities that require it.
         is_valid_file (callable, optional): A function that takes path of a file
             and check if the file is a valid file (used to check of corrupt logs)
             both extensions and is_valid_file should not be passed.
         max_samples (int, optional): Maximum number of samples to load. If None, all samples are loaded.
         pre_shuffle (bool, optional): Whether to shuffle the sample during the init.
-        return_paths (bool, optional): Whether to return the paths of the samples.
-        cache (bool, optional): Whether to cache the samples in memory. If True, the samples are loaded only once and then cached in memory.
-
-     Attributes:
-        classes (list): List of the class names sorted alphabetically.
-        class_to_idx (dict): Dict with items (class_name, class_index).
-        samples (list): List of (sample path, class_index) tuples
-        targets (list): The class_index value for each image in the dataset
+        return_path (bool, optional): Whether to return the paths of the samples.
     """
 
     def __init__(
@@ -265,20 +161,27 @@ class MultiModalDatasetFolder(VisionDataset):
         modality_paths: Dict[str, str],
         modality_transforms: Dict[str, AbstractTransform],
         modality_info: Dict,
+        valid_ids: Optional[List[str]] = None,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
+        tokenizer: Optional[Tokenizer] = None,
+        data_df: Optional[pd.DataFrame] = None,
         is_valid_file: Optional[Callable[[str], bool]] = None,
         max_samples: Optional[int] = None,
         pre_shuffle: bool = False,
-        cache: bool = False,
         return_path: bool = False,
     ) -> None:
-        super(MultiModalDatasetFolder, self).__init__(
-            root, transform=transform, target_transform=target_transform
-        )
+        super().__init__(root, transform=transform, target_transform=target_transform)
+        for mod in modalities:
+            need_df = (
+                "path" in modality_info[mod] and modality_info[mod]["path"] is None
+            )
+            if need_df and data_df is None:
+                raise ValueError(f"path is None for modality {mod} and data_df is None")
 
         self.use_mask = "mask_valid" in modalities
         self.modalities = [mod for mod in modalities if mod != "mask_valid"]
+        self.data_df = data_df
 
         # If modality_paths is not provided, use the default paths
         self.modality_paths = modality_paths
@@ -288,6 +191,10 @@ class MultiModalDatasetFolder(VisionDataset):
         self.modality_transforms = modality_transforms
         self.modality_info = modality_info
         self.return_path = return_path
+
+        for transform in self.modality_transforms.values():
+            if hasattr(transform, "set_tokenizer"):
+                transform.set_tokenizer(tokenizer)
 
         classes, class_to_idx = self._find_classes(
             os.path.join(self.root, list(self.modality_paths.values())[0])
@@ -299,14 +206,8 @@ class MultiModalDatasetFolder(VisionDataset):
                 os.path.join(self.root, f"{self.modality_paths[mod]}"),
                 class_to_idx,
                 extensions,
+                valid_ids,
                 is_valid_file,
-                cache_path=(
-                    os.path.join(
-                        self.root, "dataloader_cache", f"{self.modality_paths[mod]}.pkl"
-                    )
-                    if cache
-                    else None
-                ),
             )
             for mod in self.modalities
         }
@@ -321,7 +222,6 @@ class MultiModalDatasetFolder(VisionDataset):
                 raise RuntimeError(msg)
 
         self.extensions = extensions
-
         self.classes = classes
         self.class_to_idx = class_to_idx
         self.samples = samples
@@ -338,13 +238,9 @@ class MultiModalDatasetFolder(VisionDataset):
 
         if pre_shuffle:
             total_samples = len(list(self.samples.values())[0])
-            np.random.seed(100)
             permutation = np.random.permutation(total_samples)
             for task in samples:
                 self.samples[task] = [self.samples[task][i] for i in permutation]
-
-        # self.cache = {}
-        self.imgs = self.samples
 
     def _find_classes(self, dir: str) -> Tuple[List[str], Dict[str, int]]:
         """
@@ -370,57 +266,54 @@ class MultiModalDatasetFolder(VisionDataset):
         file_name = file_name.split(".")[0]
         return class_id, file_name
 
-    def __getitem__(self, index: int) -> Tuple[Any, Any]:
+    def __getitem__(self, index: int) -> Dict[str, torch.Tensor]:
         """
         Args:
             index (int): Index
 
         Returns:
-            # NOTE: this is wrong, it's a dict with potentially more keys than just sample and
-            # target, but the code is pretty self-explanatory
-            tuple: (sample, target) where target is class_index of the target class.
+            dict: maps modality names to sample tensors
         """
-        # We're not caching to better take advantage of augmentations
-        # if index in self.cache:
-        #     sample_dict, target = deepcopy(self.cache[index])
-        # else:
         sample_dict = {}
-        potential_missing_data_mods = []
+        missing_data_mods = []
         for mod in self.modalities:
-            # BUG?: target changes in loop
-            path, target = self.samples[mod][index]
-            sample = self.modality_transforms[get_transform_key(mod)].load(path)
+            path, _ = self.samples[mod][index]
+            if (
+                "path" in self.modality_info["mod"]
+                and self.modality_info["mod"]["path"] is None
+            ):
+                data = self.data_df[index]
+                sample = self.modality_transforms[get_transform_key(mod)].load(data)
+            else:
+                sample = self.modality_transforms[get_transform_key(mod)].load(path)
+
             sample_dict[mod] = sample
 
             if "no_data_value" in self.modality_info[mod]:
-                potential_missing_data_mods.append(mod)
-        # self.cache[index] = deepcopy((sample_dict, target))
+                missing_data_mods.append(mod)
 
         if self.transform is not None:
             # Applies the UnifiedDataTransform which augments the data (as well as pre and post processes it)
             sample_dict = self.transform(sample_dict)
-        if self.target_transform is not None:
-            target = self.target_transform(target)
 
-        sample_dict["class_idx"] = target
-
-        if self.return_path:  # and index not in self.cache:
+        if self.return_path:
             class_id, file_name = self.get_class_and_file(path)
             sample_dict["class_id"] = class_id
             sample_dict["file_name"] = file_name
 
-        if len(potential_missing_data_mods) > 0:
+        if len(missing_data_mods) > 0:
             if not self.use_mask:
                 raise ValueError(
-                    f"No mask_value is set but some modalities require a mask: {potential_missing_data_mods}"
+                    f"No mask_value is set but some modalities require a mask: {missing_data_mods}"
                 )
             mods_list = [
                 (name, self.modality_info[name]["no_data_value"], sample_dict[name])
-                for name in potential_missing_data_mods
+                for name in missing_data_mods
             ]
             sample_dict["mask_valid"] = compute_mask(mods_list)
 
-        # normalizing needs to be done after the mask is created otherwise the no_data_value might be obscured
+        # Normalizing needs to be done after the mask is created otherwise the no_data_value might be
+        # obscured for the mask
         for mod in self.modalities:
             key = get_transform_key(mod)
             norm_name = f"{key}_tensor_norm"
