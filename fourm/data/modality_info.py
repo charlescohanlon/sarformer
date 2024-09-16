@@ -24,10 +24,6 @@ from fourm.data.modality_transforms import (
     StructuredDataTransform,
     TargetDistributionTransform,
 )
-from fourm.models.decoder_embeddings import (
-    ImageTokenDecoderEmbedding,
-    SequenceDecoderEmbedding,
-)
 from fourm.models.encoder_embeddings import (
     ImageTokenEncoderEmbedding,
     SequenceEncoderEmbedding,
@@ -39,9 +35,6 @@ MODALITY_INFO = {
         "vocab_size": 30_000,
         "encoder_embedding": partial(
             SequenceEncoderEmbedding, vocab_size=30_000, max_length=256, padding_idx=0
-        ),
-        "decoder_embedding": partial(
-            SequenceDecoderEmbedding, vocab_size=30_000, max_length=256, padding_idx=0
         ),
         "min_tokens": 0,
         "max_tokens": 256,
@@ -60,33 +53,33 @@ MODALITY_INFO = {
         "patch_size": 16,
         "vocab_size": 16384,
         "encoder_embedding": partial(ImageTokenEncoderEmbedding, vocab_size=16384),
-        "decoder_embedding": partial(ImageTokenDecoderEmbedding, vocab_size=16384),
         "min_tokens": 0,
         "max_tokens": None,  # Will be set to 196
         "type": "img",
         "id": generate_uint15_hash("tok_rgb@224"),
         "pretokenized": True,
+        "path": "tok_rgb",
     },
     "tok_depth@224": {
         "input_size": 224,
         "patch_size": 16,
         "vocab_size": 8192,
         "encoder_embedding": partial(ImageTokenEncoderEmbedding, vocab_size=8192),
-        "decoder_embedding": partial(ImageTokenDecoderEmbedding, vocab_size=8192),
         "min_tokens": 0,
         "max_tokens": None,  # Will be set to 196
         "type": "img",
         "id": generate_uint15_hash("tok_depth@224"),
         "pretokenized": True,
+        "path": "tok_depth",
     },
-    "rgb": {  # used for tokenizer training
+    "rgb@224": {  # used for tokenizer training
         "type": "img",
         "num_channels": 3,
         "id": generate_uint15_hash("rgb"),
         "path": "rgb",
         "no_data_value": 0,
     },
-    "depth": {  # used for tokenizer training
+    "depth@224": {  # used for tokenizer training
         "type": "img",
         "num_channels": 1,
         "id": generate_uint15_hash("depth"),
@@ -97,13 +90,6 @@ MODALITY_INFO = {
         "vocab_size": 30_000,
         "encoder_embedding": partial(
             SequenceEncoderEmbedding,
-            vocab_size=30_000,
-            max_length=40,
-            padding_idx=0,
-            sincos_pos_emb=True,
-        ),
-        "decoder_embedding": partial(
-            SequenceDecoderEmbedding,
             vocab_size=30_000,
             max_length=40,
             padding_idx=0,
@@ -149,8 +135,8 @@ ID_MAP = {  # for structured data transform
 
 MODALITY_TRANSFORMS = {
     "caption": CaptionTransform(caption_name="prompt"),
-    "tok_rgb": TokTransform(),
-    "tok_depth": TokTransform(),
+    "tok_rgb@224": TokTransform(),
+    "tok_depth@224": TokTransform(),
     "structureddata": StructuredDataTransform(
         id_map=ID_MAP, shuffle=True, value_type=np.float16
     ),
@@ -163,11 +149,11 @@ MODALITY_TRANSFORMS = {
     ),
 }
 
-MODALITY_TRANSFORMS_DIVAE = {
-    "rgb": RGBTransform(
+MODALITY_TRANSFORMS_VQVAE = {
+    "rgb@224": RGBTransform(
         mean_and_std="naip", no_data_value=MODALITY_INFO["rgb"]["no_data_value"]
     ),
-    "depth": DepthTransform(
+    "depth@224": DepthTransform(
         norm_ops=["depth_minmax_scaling"],
         no_data_value=MODALITY_INFO["depth"]["no_data_value"],
     ),

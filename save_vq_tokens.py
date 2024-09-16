@@ -28,7 +28,7 @@ from tqdm import tqdm
 
 import fourm.utils as utils
 import fourm.utils.clip as clip
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_DIVAE
+from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_VQVAE
 from fourm.vq import get_image_tokenizer
 import fourm.utils.clip as clip
 from fourm.data.multimodal_dataset_folder import compute_mask
@@ -66,7 +66,7 @@ class SaveVQDataset(Dataset):
         modality_info: dict,
         input_size: int = 224,
         mask_value: Optional[float] = None,
-        task_transforms: dict = MODALITY_TRANSFORMS_DIVAE,
+        task_transforms: dict = MODALITY_TRANSFORMS_VQVAE,
         resample_mode: str = "bilinear",
         corrupt_samples_log: Optional[str] = None,
         dryrun: bool = False,

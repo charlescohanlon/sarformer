@@ -73,7 +73,7 @@ from fourm.data.modality_transforms import (
     SAMInstanceTransform,
 )
 from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_DIVAE
+from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_VQVAE
 from fourm.utils import ModelEmaV2 as ModelEma
 from fourm.utils import NativeScalerWithGradNormCount as NativeScaler
 from fourm.utils import destandardize
@@ -903,19 +903,19 @@ def main(args: argparse.Namespace) -> None:
     else:
         image_augmenter_train = NoImageAugmenter()
 
-    MODALITY_TRANSFORMS_DIVAE["normal"] = NormalTransform(
+    MODALITY_TRANSFORMS_VQVAE["normal"] = NormalTransform(
         standardize_surface_normals=args.standardize_surface_normals
     )
-    MODALITY_TRANSFORMS_DIVAE["rgb"] = RGBTransform(
+    MODALITY_TRANSFORMS_VQVAE["rgb"] = RGBTransform(
         imagenet_default_mean_and_std=args.imagenet_default_mean_and_std
     )
 
-    MODALITY_TRANSFORMS_DIVAE_VAL = deepcopy(MODALITY_TRANSFORMS_DIVAE)
+    MODALITY_TRANSFORMS_VQVAE_VAL = deepcopy(MODALITY_TRANSFORMS_VQVAE)
     if "sam_mask" in args.domain:
-        MODALITY_TRANSFORMS_DIVAE[args.domain] = SAMInstanceTransform(
+        MODALITY_TRANSFORMS_VQVAE[args.domain] = SAMInstanceTransform(
             mask_size=args.mask_size, max_instance_n=1
         )
-        MODALITY_TRANSFORMS_DIVAE_VAL[args.domain] = SAMInstanceTransform(
+        MODALITY_TRANSFORMS_VQVAE_VAL[args.domain] = SAMInstanceTransform(
             mask_size=args.mask_size, max_instance_n=200
         )
 
@@ -963,7 +963,7 @@ def main(args: argparse.Namespace) -> None:
         data_loader_train = build_wds_divae_dataloader(
             data_path=args.data_path,
             modality_info=modality_info,
-            modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_transforms=MODALITY_TRANSFORMS_VQVAE,
             image_augmenter=image_augmenter_train,
             num_gpus=num_tasks,
             num_workers=args.num_workers,
@@ -979,14 +979,14 @@ def main(args: argparse.Namespace) -> None:
         )
     else:
         transforms_train = UnifiedDataTransform(
-            transforms_dict=MODALITY_TRANSFORMS_DIVAE,
+            transforms_dict=MODALITY_TRANSFORMS_VQVAE,
             image_augmenter=image_augmenter_train,
         )
         dataset_train = MultiModalDatasetFolder(
             root=args.data_path,
             modalities=args.all_domains,
             modality_paths=modality_paths,
-            modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_transforms=MODALITY_TRANSFORMS_VQVAE,
             transform=transforms_train,
             cache=args.cache_datasets,
         )
@@ -1020,7 +1020,7 @@ def main(args: argparse.Namespace) -> None:
         else:
             image_augmenter_val = NoImageAugmenter()
         transforms_val = UnifiedDataTransform(
-            transforms_dict=MODALITY_TRANSFORMS_DIVAE_VAL,
+            transforms_dict=MODALITY_TRANSFORMS_VQVAE_VAL,
             image_augmenter=image_augmenter_val,
         )
 
@@ -1028,7 +1028,7 @@ def main(args: argparse.Namespace) -> None:
             root=args.eval_data_path,
             modalities=args.all_domains,
             modality_paths=modality_paths,
-            modality_transforms=MODALITY_TRANSFORMS_DIVAE_VAL,
+            modality_transforms=MODALITY_TRANSFORMS_VQVAE_VAL,
             transform=transforms_val,
             cache=args.cache_datasets,
         )
@@ -1064,7 +1064,7 @@ def main(args: argparse.Namespace) -> None:
                 root=args.eval_data_path,
                 modalities=args.all_domains,
                 modality_paths=modality_paths,
-                modality_transforms=MODALITY_TRANSFORMS_DIVAE_VAL,
+                modality_transforms=MODALITY_TRANSFORMS_VQVAE_VAL,
                 transform=transforms_val,
                 pre_shuffle=True,
                 max_samples=args.num_eval_metrics_samples,
@@ -1106,7 +1106,7 @@ def main(args: argparse.Namespace) -> None:
                 root=args.eval_data_path,
                 modalities=args.all_domains,
                 modality_paths=modality_paths,
-                modality_transforms=MODALITY_TRANSFORMS_DIVAE_VAL,
+                modality_transforms=MODALITY_TRANSFORMS_VQVAE_VAL,
                 transform=transforms_val,
                 pre_shuffle=True,
                 max_samples=args.num_logged_images,

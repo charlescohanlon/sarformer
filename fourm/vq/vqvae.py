@@ -24,7 +24,7 @@ from huggingface_hub import PyTorchModelHubMixin
 
 from fourm.vq.quantizers import VectorQuantizerLucid, Memcodes
 import fourm.vq.models.vit_models as vit_models
-import fourm.vq.models.unet.unet as unet
+import fourm.models.unet as unet
 import fourm.vq.models.uvit as uvit
 import fourm.vq.models.controlnet as controlnet
 from fourm.vq.models.mlp_models import build_mlp

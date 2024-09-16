@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from functools import reduce
-import json
 import random
 from typing import Optional, Tuple, Union, Dict
 from abc import ABC, abstractmethod
@@ -86,7 +85,7 @@ class UnifiedDataTransform(object):
     def __init__(
         self,
         transforms_dict,
-        image_augmenter: Optional[AbstractImageAugmenter] = None,
+        image_augmenter: Optional[AbstractImageAugmenter],
         resample_mode: Optional[str] = None,
         **kwargs,
     ):
@@ -115,19 +114,9 @@ class UnifiedDataTransform(object):
             dict: Transformed dict of modalities
         """
 
-        if self.image_augmenter is not None:
-            crop_coords, flip, orig_size, target_size, rand_aug_idx, rotation_angle = (
-                self.image_augmenter(mod_dict, crop_settings)
-            )
-        else:
-            crop_coords, flip, orig_size, target_size, rand_aug_idx, rotation_angle = (
-                None,
-                False,
-                None,
-                None,
-                None,
-                0,
-            )
+        crop_coords, flip, orig_size, target_size, rand_aug_idx, rotation_angle = (
+            self.image_augmenter(mod_dict, crop_settings)
+        )
 
         mod_dict = {
             k: self.transforms_dict[get_transform_key(k)].image_augment(
@@ -674,3 +663,28 @@ class TargetDistributionTransform(AbstractTransform):
 
     def postprocess(self, target_distribution):
         return torch.as_tensor(target_distribution)
+
+
+class IdentityTransform(AbstractTransform):
+
+    def load(self, path):
+        raise NotImplementedError("IdentityTransform does not support loading")
+
+    def preprocess(self, sample):
+        return sample
+
+    def image_augment(
+        self,
+        val,
+        crop_coords: Tuple,
+        flip: bool,
+        rotation_angle: float,
+        orig_size: Tuple,
+        target_size: Tuple,
+        rand_aug_idx: Optional[int],
+        resample_mode: str = None,
+    ):
+        return val
+
+    def postprocess(self, sample):
+        return sample
