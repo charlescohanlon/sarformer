@@ -2065,6 +2065,7 @@ def evaluate(
         metric_logger.update(code_loss=code_loss_value)
 
     # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
     print("Eval averaged stats:", metric_logger)
     return {
         f"{prefix} {k}": meter.global_avg for k, meter in metric_logger.meters.items()

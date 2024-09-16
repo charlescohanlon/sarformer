@@ -1,6 +1,7 @@
 from abc import abstractmethod
 
 import math
+from typing import Union
 
 import torch
 import torch.nn as nn
@@ -19,7 +20,7 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     :param timesteps: a [B] Tensor of indices.
     :param dim: the dimension of the output.
     :param max_period: controls the minimum frequency of the embeddings.
-    :return: an [N x dim] Tensor of positional embeddings.
+    :return: an [B x N] Tensor of positional embeddings.
     """
     half = dim // 2
     freqs = torch.exp(-math.log(max_period) * torch.arange(half) / half).to(
@@ -447,10 +448,15 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         Apply the model to an input batch.
 
         :param x: an [B x C x H x W] Tensor of inputs.
-        :param timesteps: a [B] Tensor of timesteps.
+        :param timesteps: a [B] Tensor of timesteps or a number of them.
         :param cond: an [B x N x D] Tensor of encoded conditioning.
         :return: an [B x C x H x W] Tensor of outputs.
         """
+        if not torch.is_tensor(timesteps):
+            timesteps = torch.tensor([timesteps], dtype=torch.long, device=x.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps.unsqueeze(0).to(x.device)
+
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         hs = []  # Hidden states for skip connections
 
@@ -516,7 +522,7 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
     def forward(
         self,
         sample: torch.FloatTensor,  # Shape (B, C, H, W)
-        timesteps: torch.Tensor,  # Shape (B)
+        timesteps: Union[torch.Tensor, float, int],  # Shape (B) if tensor
         cond: torch.Tensor = None,  # Shape (B, N, D)
     ):
         _, _, H, W = sample.shape
