@@ -27,7 +27,7 @@ from torchvision.datasets.vision import VisionDataset
 from fourm.data.modality_transforms import (
     AbstractTransform,
     DepthTransform,
-    get_transform_key,
+    get_modality_prefix,
 )
 
 IMG_EXTENSIONS = (
@@ -77,7 +77,7 @@ def make_dataset(
     directory: str,
     class_to_idx: Dict[str, int],
     extensions: Optional[Tuple[str, ...]] = None,
-    valid_ids: Optional[List[str]] = None,
+    valid_id_dict: Optional[Dict[str, int]] = None,
     is_valid_file: Optional[Callable[[str], bool]] = None,
     cache_path: Optional[str] = None,
 ) -> List[Tuple[str, int]]:
@@ -107,8 +107,9 @@ def make_dataset(
         for root, _, fnames in sorted(os.walk(target_dir, followlinks=True)):
             for fname in sorted(fnames):
                 path = os.path.join(root, fname)
-                # TODO: find some way to make this more efficient
-                is_valid_id = valid_ids is None or fname.split(".")[0] in valid_ids
+                is_valid_id = (
+                    valid_id_dict is None or fname.split(".")[0] in valid_id_dict
+                )
                 if is_valid_file(path) and is_valid_id:
                     item = path, class_index
                     instances.append(item)
@@ -158,13 +159,14 @@ class MultiModalDatasetFolder(VisionDataset):
         self,
         root: str,
         modalities: List[str],
-        modality_paths: Dict[str, str],
         modality_transforms: Dict[str, AbstractTransform],
         modality_info: Dict,
+        modality_paths: Optional[Dict[str, str]] = None,
         valid_ids: Optional[List[str]] = None,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
         tokenizer: Optional[Tokenizer] = None,
+        max_token_length: Optional[int] = None,
         data_df: Optional[pd.DataFrame] = None,
         is_valid_file: Optional[Callable[[str], bool]] = None,
         max_samples: Optional[int] = None,
@@ -172,49 +174,70 @@ class MultiModalDatasetFolder(VisionDataset):
         return_path: bool = False,
     ) -> None:
         super().__init__(root, transform=transform, target_transform=target_transform)
-        for mod in modalities:
-            need_df = (
-                "path" in modality_info[mod] and modality_info[mod]["path"] is None
-            )
-            if need_df and data_df is None:
-                raise ValueError(f"path is None for modality {mod} and data_df is None")
 
-        self.use_mask = "mask_valid" in modalities
+        # Masks masks aren't loaded, so we remove them from the modalities
+        self.needs_mask = "mask_valid" in modalities
         self.modalities = [mod for mod in modalities if mod != "mask_valid"]
-        self.data_df = data_df
 
-        # If modality_paths is not provided, use the default paths
-        self.modality_paths = modality_paths
+        self.modality_paths = {} if modality_paths is None else modality_paths
         for mod in self.modalities:
+            # Look for a path in the modality_info or use the modality prefix
             if mod not in self.modality_paths:
-                modality_paths[mod] = mod
+                if "path" in modality_info[mod]:
+                    self.modality_paths[mod] = modality_info[mod]["path"]
+                else:
+                    self.modality_paths[mod] = get_modality_prefix(mod)
+
+            # Check if a dataframe is needed
+            need_df = self.modality_paths[mod] is None
+            if need_df and data_df is None:
+                raise ValueError(f"A dataframe must be supplied for modality: {mod}")
+
+        self.data_df = data_df
         self.modality_transforms = modality_transforms
         self.modality_info = modality_info
         self.return_path = return_path
 
         for transform in self.modality_transforms.values():
             if hasattr(transform, "set_tokenizer"):
-                transform.set_tokenizer(tokenizer)
+                if tokenizer is None or max_token_length is None:
+                    raise ValueError(
+                        "tokenizer and max_token_length must be provided if a modality is text tokenized."
+                    )
+                transform.set_tokenizer(tokenizer, max_token_length)
 
         classes, class_to_idx = self._find_classes(
             os.path.join(self.root, list(self.modality_paths.values())[0])
         )
         extensions = UNIFIED_EXTENSIONS if is_valid_file is None else None
 
+        if valid_ids is not None:
+            # take advantage of O(1) lookup using a dict instead of a list
+            valid_ids = {id: 1 for id in valid_ids}
+
         samples = {
-            mod: make_dataset(
-                os.path.join(self.root, f"{self.modality_paths[mod]}"),
-                class_to_idx,
-                extensions,
-                valid_ids,
-                is_valid_file,
+            mod: (
+                make_dataset(
+                    os.path.join(self.root, f"{self.modality_paths[mod]}"),
+                    class_to_idx,
+                    extensions,
+                    valid_ids,
+                    is_valid_file,
+                )
+                if self.modality_paths[mod] is not None  # mod comes from dataframe
+                # Every modality from the dataframe has one class, class index 0
+                else [
+                    (uid, 0)  # use uid instead of a path
+                    for uid in data_df.index
+                    if valid_ids is None or uid in valid_ids
+                ]
             )
             for mod in self.modalities
         }
 
         for mod, mod_samples in samples.items():
             if len(mod_samples) == 0:
-                msg = "Found 0 logs in subfolders of: {}\n".format(
+                msg = "Found 0 valid files in subfolders of: {}\n".format(
                     os.path.join(self.root, f"{self.modality_paths[mod]}")
                 )
                 if extensions is not None:
@@ -229,7 +252,6 @@ class MultiModalDatasetFolder(VisionDataset):
         # Select random subset of dataset if so specified
         if isinstance(max_samples, int):
             total_samples = len(list(self.samples.values())[0])
-            np.random.seed(0)
             permutation = np.random.permutation(total_samples)
             for task in samples:
                 self.samples[task] = [self.samples[task][i] for i in permutation][
@@ -276,16 +298,15 @@ class MultiModalDatasetFolder(VisionDataset):
         """
         sample_dict = {}
         missing_data_mods = []
+        path = None  # for return_path in case path isn't set
         for mod in self.modalities:
-            path, _ = self.samples[mod][index]
-            if (
-                "path" in self.modality_info["mod"]
-                and self.modality_info["mod"]["path"] is None
-            ):
-                data = self.data_df[index]
-                sample = self.modality_transforms[get_transform_key(mod)].load(data)
+            if self.modality_paths[mod] is None:
+                uid, _ = self.samples[mod][index]
+                data = self.data_df.loc[uid]
+                sample = self.modality_transforms[get_modality_prefix(mod)].load(data)
             else:
-                sample = self.modality_transforms[get_transform_key(mod)].load(path)
+                path, _ = self.samples[mod][index]
+                sample = self.modality_transforms[get_modality_prefix(mod)].load(path)
 
             sample_dict[mod] = sample
 
@@ -296,26 +317,26 @@ class MultiModalDatasetFolder(VisionDataset):
             # Applies the UnifiedDataTransform which augments the data (as well as pre and post processes it)
             sample_dict = self.transform(sample_dict)
 
-        if self.return_path:
+        if self.return_path and path is not None:
             class_id, file_name = self.get_class_and_file(path)
             sample_dict["class_id"] = class_id
             sample_dict["file_name"] = file_name
 
         if len(missing_data_mods) > 0:
-            if not self.use_mask:
+            if not self.needs_mask:
                 raise ValueError(
                     f"No mask_value is set but some modalities require a mask: {missing_data_mods}"
                 )
             mods_list = [
-                (name, self.modality_info[name]["no_data_value"], sample_dict[name])
-                for name in missing_data_mods
+                (mod, self.modality_info[mod]["no_data_value"], sample_dict[mod])
+                for mod in missing_data_mods
             ]
             sample_dict["mask_valid"] = compute_mask(mods_list)
 
         # Normalizing needs to be done after the mask is created otherwise the no_data_value might be
         # obscured for the mask
         for mod in self.modalities:
-            key = get_transform_key(mod)
+            key = get_modality_prefix(mod)
             norm_name = f"{key}_tensor_norm"
             if hasattr(self.modality_transforms[key], norm_name):
                 sample_dict[mod] = getattr(self.modality_transforms[key], norm_name)(

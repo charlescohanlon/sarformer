@@ -11,9 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import reduce
+from copy import deepcopy
 import random
-from typing import Optional, Tuple, Union, Dict
+from typing import Optional, Text, Tuple, Union, Dict
 from abc import ABC, abstractmethod
 
 from PIL import Image
@@ -41,7 +41,7 @@ from fourm.utils.data_constants import (
 
 
 # The @-symbol is used to specify the resolution of a modality. Syntax: modality@resolution
-def get_transform_key(mod_name):
+def get_modality_prefix(mod_name):
     return mod_name.split("@")[0] if "@" in mod_name else mod_name
 
 
@@ -51,7 +51,7 @@ def get_transform_resolution(mod_name, default_resolution, to_tuple=True):
 
 
 def get_transform(mod_name, transforms_dict):
-    return transforms_dict.get(get_transform_key(mod_name), IdentityTransform())
+    return transforms_dict.get(get_modality_prefix(mod_name), IdentityTransform())
 
 
 def get_pil_resample_mode(resample_mode: str):
@@ -119,7 +119,7 @@ class UnifiedDataTransform(object):
         )
 
         mod_dict = {
-            k: self.transforms_dict[get_transform_key(k)].image_augment(
+            k: self.transforms_dict[get_modality_prefix(k)].image_augment(
                 v,
                 crop_coords=crop_coords,
                 flip=flip,
@@ -191,6 +191,12 @@ class AbstractTransform(ABC):
 
     @abstractmethod
     def postprocess(self, v):
+        pass
+
+
+class TextTokenizedTransform(AbstractTransform):
+    @abstractmethod
+    def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
         pass
 
 
@@ -504,13 +510,16 @@ class TokTransform(AbstractTransform):
         return torch.as_tensor(sample)
 
 
-class CaptionTransform(AbstractTransform):
+class CaptionTransform(TextTokenizedTransform):
 
-    def __init__(self, caption_name: str = "prompt"):
+    def __init__(self, caption_name: str = "prompt", return_attn_mask: bool = True):
         self.caption_name = caption_name
+        self.return_attn_mask = return_attn_mask
 
-    def set_tokenizer(self, tokenizer: Tokenizer):
-        self.tokenizer = tokenizer
+    def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
+        self.tokenizer = deepcopy(tokenizer)
+        self.tokenizer.enable_padding(length=max_length, direction="left")
+        self.tokenizer.enable_truncation(max_length)
 
     def load(self, data: pd.Series):
         return data[self.caption_name]
@@ -533,47 +542,65 @@ class CaptionTransform(AbstractTransform):
 
     def postprocess(self, sample):
         assert self.tokenizer is not None, "Tokenizer must be set for caption transform"
-        tokens = self.tokenizer.encode(sample)
-        return tokens
+        enc = self.tokenizer.encode(sample)
+        ids = torch.as_tensor(enc.ids)
+
+        if self.return_attn_mask:
+            mask = torch.as_tensor(enc.attention_mask)
+            return ids, mask
+
+        return ids
 
 
-# TODO: will need to change this when we use a learned tokenizer for the structured data
-class StructuredDataTransform(AbstractTransform):
+class StructuredDataTransform(TextTokenizedTransform):
 
     def __init__(
         self,
         id_map: Dict[str, int],
         shuffle: bool = True,
-        value_type: type = np.float16,
     ):
         self.id_map = id_map
         self.shuffle = shuffle
-        self.value_type = value_type
 
     def data_to_str(self, data: pd.Series):
-        keys = self.id_map.keys()
+        keys = list(self.id_map.keys())
 
         if self.shuffle:
-            random.shuffle(keys, len(keys))
+            random.shuffle(keys)
 
         data_str = ""
         for k in keys:
             type_str = f"v0={self.id_map[k]}"
 
-            val = data.astype(self.value_type)[k]
-            # Converts floating point to hexadecimal string
-            # Courtesy of https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
-            hex_str = str(hex(struct.unpack("<I", struct.pack("<f", val))[0]))[2:]
-            hex_str = hex_str.upper()
+            val = data[k]
+            if isinstance(val, str):
+                if "-" in val:  # TODO: finish this when we get time and data cols
+                    val = val.replace("-", "--")
 
-            byte_strs = [hex_str[i : i + 2] for i in range(0, len(hex_str), 2)]
-            val_str = f"v1=[{']['.join(byte_strs)}]"  # e.g. v1=[0A][B3] for float16
-            data_str += f"{type_str} {val_str} "
+                val_str = f'v1="{val}"'
+                data_str += f"{type_str} {val_str} "
+            else:
+                val = np.float32(val)
+                if val == 0.0:
+                    hex_str = (
+                        "0" * 8
+                    )  # using struct gives '0x0', but we need 8 hex zeros
+                else:
+                    # Converts floating point to hexadecimal string
+                    # Courtesy of https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
+                    hex_str = str(hex(struct.unpack("<I", struct.pack("<f", val))[0]))
+                    hex_str = hex_str[2:]  # removes '0x'
+                    hex_str = hex_str.upper()
+
+                byte_strs = [hex_str[i : i + 2] for i in range(0, len(hex_str), 2)]
+                val_str = f"v1=[{']['.join(byte_strs)}]"  # e.g. v1=[0A][B3] for float16
+                data_str += f"{type_str} {val_str} "
 
         return data_str
 
-    def set_tokenizer(self, tokenizer: Tokenizer):
-        self.tokenizer = tokenizer
+    def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
+        self.tokenizer = deepcopy(tokenizer)
+        # We don't pad or truncate structured data b/c it is the same length every time
 
     def load(self, data: pd.Series):
         return self.data_to_str(data)
@@ -598,8 +625,10 @@ class StructuredDataTransform(AbstractTransform):
         assert (
             self.tokenizer is not None
         ), "Tokenizer must be set for structured data transform"
-        tokens = self.tokenizer.encode(sample)
-        return tokens
+        enc = self.tokenizer.encode(sample)
+        ids = torch.as_tensor(enc.ids)
+
+        return ids
 
 
 class TargetDistributionTransform(AbstractTransform):
@@ -662,7 +691,8 @@ class TargetDistributionTransform(AbstractTransform):
         return val
 
     def postprocess(self, target_distribution):
-        return torch.as_tensor(target_distribution)
+        target_distribution = torch.as_tensor(target_distribution)
+        return target_distribution.unsqueeze(0)
 
 
 class IdentityTransform(AbstractTransform):
