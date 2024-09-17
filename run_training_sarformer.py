@@ -13,19 +13,17 @@
 # limitations under the License.
 import argparse
 import datetime
-from functools import partial
 import json
 from einops import rearrange, repeat
 import wandb
 import math
 import os
-import resource
 import sys
 import time
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, Dict, Union
+from typing import Iterable, List, Optional, Dict, Union
 import gc
 
 import numpy as np
@@ -89,13 +87,6 @@ def get_args():
         help="Number of epochs (default: %(default)s)",
     )
     parser.add_argument(
-        "--total_tokens",
-        default=-1,
-        type=int,
-        help="Number of total input tokens (in billions), only applicable if epochs is negative. "
-        "Sets the number of epochs to approximate this amount of tokens.",
-    )
-    parser.add_argument(
         "--accum_iter",
         default=1,
         type=int,
@@ -115,12 +106,6 @@ def get_args():
         help="Name of model to train (no default, must be specified)",
     )
     parser.add_argument(
-        "--patch_size",
-        default=16,
-        type=int,
-        help="Base patch size for image-like modalities (default: %(default)s)",
-    )
-    parser.add_argument(
         "--input_size",
         default=224,
         type=int,
@@ -133,6 +118,14 @@ def get_args():
         choices=["float16", "bfloat16", "float32", "bf16", "fp16", "fp32"],
         help="Data type (default: %(default)s",
     )
+    parser.add_argument(
+        "--cond_domains",
+        nargs="+",
+        default=["tok_rgb@224", "tok_depth@224", "caption", "structured_data"],
+        help="Input modalities (default: %(default)s)",
+    )
+
+    # Loss
     parser.add_argument(
         "--loss_type",
         type=str,
@@ -167,13 +160,12 @@ def get_args():
     )
     parser.add_argument(
         "--opt_betas",
-        default=[0.9, 0.95],
+        default=[0.9, 0.999],
         type=float,
         nargs="+",
         help="Optimizer betas (default: %(default)s)",
     )
     parser.add_argument("--compute_grad_norm", action="store_true")
-
     parser.add_argument(
         "--no_compute_grad_norm", action="store_false", dest="compute_grad_norm"
     )
@@ -221,13 +213,7 @@ def get_args():
         help="Lower base lr bound for cyclic schedulers that hit 0 (default: %(default)s)",
     )
     parser.add_argument(
-        "--frozen_model_blr",
-        type=float,
-        default=-1,
-        help="base lr bound for frozen model (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--scheduler",
+        "--lr_and_wd_scheduler",
         type=str,
         default="cosine",
         choices=["cosine", "inverse_sqrt-10000"],
@@ -239,18 +225,7 @@ def get_args():
         default=10,
         help="Epochs to warmup LR, if scheduler supports (default: %(default)s)",
     )
-    parser.add_argument(
-        "--warmup_steps",
-        type=int,
-        default=-1,
-        help="Steps to warmup LR, if scheduler supports (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--warmup_tokens",
-        type=int,
-        default=-1,
-        help="Total tokens to warmup LR, if scheduler supports (default: %(default)s)",
-    )
+
     # Cooldown for inverse sqrt and other "infinite" LR schedules
     parser.add_argument(
         "--cooldown_epochs",
@@ -258,57 +233,160 @@ def get_args():
         default=10,
         help="Epochs to cool down LR, if scheduler supports (default: %(default)s)",
     )
-    parser.add_argument(
-        "--cooldown_steps",
-        type=int,
-        default=-1,
-        help="Steps to cool down LR, if scheduler supports (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--cooldown_tokens",
-        type=int,
-        default=-1,
-        help="Total tokens to cool down LR, if scheduler supports (default: %(default)s)",
-    )
-    # For warm-starting from a trained model
-    parser.add_argument(
-        "--frozen_model_epochs",
-        default=0,
-        type=int,
-        help="Number of epochs where only input/output embeddings are trained (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--frozen_model_tokens",
-        default=0,
-        type=int,
-        help="Number of tokens where only input/output embeddings are trained (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--frozen_embedding_domain",
-        default=None,
-        type=str,
-        help="Embeddings of domains that are frozen during training (default: %(default)s)",
-    )
-
-    # Dataset parameters
-    parser.add_argument(
-        "--data_config",
-        type=str,
-        default="",
-        help="Path to data config to specify dataset and modality mixture parameters.",
-    )
-    parser.add_argument("--epoch_size", type=int, help="Number of samples per epoch")
 
     # Text tokenizer
     parser.add_argument(
         "--text_tokenizer_path",
-        default="fourm/utils/tokenizer/trained/text_tokenizer_4m_wordpiece_30k.json",
+        default=None,
         help="Path to trained text tokenizer",
+    )
+    parser.add_argument(
+        "--max_text_length",
+        type=int,
+        default="512",
+        help="Maximum number of tokens in text input (default: %(default)s)",
+    )
+
+    # Data
+    parser.add_argument(
+        "--data_csv_path",
+        type=str,
+        help="Path to CSV file containing structured data. (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--csv_delimiter",
+        type=str,
+        default="@",
+        help="Delimiter for CSV file containing structured data. (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--csv_index_col",
+        type=str,
+        default="uid",
+        help="Index column for CSV file containing structured data. (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--use_valid_ids",
+        action="store_true",
+        help="If a dataframe is provided use it's index as valid_ids for dataset creation",
+    )
+    parser.add_argument(
+        "--no_use_valid_ids", action="store_false", dest="use_valid_ids"
+    )
+    parser.set_defaults(use_valid_ids=True)
+
+    # Diffusion parameters
+    parser.add_argument(
+        "--num_train_timesteps",
+        default=1000,
+        type=int,
+        help="Number of diffusion steps during training (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--eval_noise_schedule",
+        default="DDIMScheduler",
+        type=str,
+        help="Type of diffusers.schedulers noise scheduler for evaluation. (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--num_eval_timesteps",
+        default=50,
+        type=int,
+        help="Number of diffusion steps during evaluation (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--beta_schedule",
+        default="linear",
+        type=str,
+        help="Forward process beta schedule. linear or squaredcos_cap_v2 (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--zero_terminal_snr",
+        action="store_true",
+        help="Enforce SNR of beta schedule to be zero at t=T. (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no_zero_terminal_snr", action="store_false", dest="zero_terminal_snr"
+    )
+    parser.set_defaults(zero_terminal_snr=True)
+    parser.add_argument(
+        "--cfg_scale",
+        default=0.0,
+        type=float,
+        help="Scale of the classifier-free guidance (default: %(default)s)",
+    )
+    # NOTE: We don't support this in the model rn but should we?
+    # parser.add_argument(
+    #     "--cls_free_guidance_dropout",
+    #     default=0.2,
+    #     type=int,
+    #     help="Condition dropout percentage during training for classifier free guidance (default: %(default)s)",
+    # )
+    # parser.add_argument(
+    #     "--masked_cfg",
+    #     action="store_true",
+    #     help="Enable to perform masking on the encoded tokens. (default: %(default)s)",
+    # )
+    # parser.add_argument("--no_masked_cfg", action="store_false", dest="masked_cfg")
+    # parser.set_defaults(masked_cfg=True)
+    # parser.add_argument(
+    #     "--masked_cfg_low",
+    #     default=0,
+    #     type=int,
+    #     help="Lower bound of number of tokens to mask out (default: %(default)s)",
+    # )
+    # parser.add_argument(
+    #     "--masked_cfg_high",
+    #     default=None,
+    #     type=int,
+    #     help="Upper bound of number of tokens to mask out, defaults to total number of tokens minus 1 (default: %(default)s)",
+    # )
+    parser.add_argument(
+        "--thresholding",
+        default=True,
+        type=bool,
+        help="Whether or not to dynamically clip outputs to [-1,1]. Only affects inference time. (default: %(default)s)",
     )
 
     # Eval
     parser.add_argument(
-        "--eval_freq", default=10, type=int, help="frequency of evaluation"
+        "--eval_data_path",
+        type=str,
+        default="/scratch/bdej/cohanlon/data/eval",
+        help="Path to evaluation data (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--num_eval_metrics_samples",
+        type=Optional[int],
+        default=None,
+        help="Number of samples to use for evaluation metrics (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--num_logged_images",
+        type=int,
+        default=9,
+        help="Number of images to log during evaluation (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--eval_batch_size",
+        type=Optional[int],
+        default=None,
+        help="Batch size for evaluation (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--eval_freq", default=10, type=int, help="Frequency of evaluation (in epochs)"
+    )
+    parser.add_argument(
+        "--eval_metric_freq",
+        default=10,
+        type=int,
+        help="Frequency of metric evaluation (in epochs)",
+    )
+    parser.add_argument(
+        "--eval_image_log_freq",
+        default=10,
+        type=int,
+        help="Frequency of image logging (in epochs)",
     )
     parser.add_argument(
         "--dist_eval",
@@ -352,19 +430,7 @@ def get_args():
     parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem", help="")
     parser.set_defaults(pin_mem=True)
 
-    parser.add_argument(
-        "--rlimit",
-        default=4096,
-        type=int,
-        help='Increase rlimit to avoid "RuntimeError: received 0 items of ancdata".',
-    )
-    parser.add_argument("--print_all", action="store_true", default=False)
     parser.add_argument("--show_user_warnings", default=False, action="store_true")
-
-    # Distributed training parameters
-    parser.add_argument(
-        "--dist_url", default="env://", help="url used to set up distributed training"
-    )
 
     # Wandb logging
     parser.add_argument(
@@ -422,20 +488,28 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
 
     # Set up shared modality info
     modality_info = setup_modality_info(args)
-    modality_paths = {
-        mod: modality_info[mod]["path"]
-        for mod in modality_info
-        if modality_info[mod].get("path", None) is not None
-    }
 
-    text_tokenizer = Tokenizer.from_file(args.text_tokenizer_path)
-    pad_tok_id = text_tokenizer.token_to_id("[PAD]")
-    max_tok_len = args.max_text_tok_len
+    text_tokenizer = None
+    if args.text_tokenizer_path:
+        if args.max_text_length is None:
+            raise ValueError("Must provide max_text_length if using a text tokenizer")
+        text_tokenizer = Tokenizer.from_file(args.text_tokenizer_path)
+        max_tok_len = args.max_text_length
 
     # Text prompts and structured data
-    data_df = pd.read_csv(
-        args.data_csv_path, sep=args.csv_delimiter, index_col=args.csv_index_col
-    )
+    data_df = None
+    if args.data_csv_path:
+        data_df = pd.read_csv(
+            args.data_csv_path, sep=args.csv_delimiter, index_col=args.csv_index_col
+        )
+
+    valid_ids = None
+    if args.use_valid_ids:
+        if data_df is None:
+            raise ValueError(
+                "Cannot use valid_ids without providing a dataframe with the data_csv_path argument"
+            )
+        valid_ids = list(data_df.index)
 
     transform = UnifiedDataTransform(
         transforms_dict=MODALITY_TRANSFORMS,
@@ -444,18 +518,17 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
     dataset_train = MultiModalDatasetFolder(
         root=args.data_path,
         modalities=args.all_domains,
-        modality_paths=modality_paths,
         modality_transforms=MODALITY_TRANSFORMS,
         modality_info=modality_info,
+        valid_ids=valid_ids,
         transform=transform,
         tokenizer=text_tokenizer,
-        pad_token_id=pad_tok_id,
         max_token_len=max_tok_len,
         data_df=data_df,
     )
 
     num_training_steps_per_epoch = len(dataset_train) // (
-        args.batch_size * args.num_tasks
+        args.batch_size * args.accum_iter * num_tasks
     )
 
     sampler_train = torch.utils.data.DistributedSampler(
@@ -480,10 +553,13 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
         dataset_val = MultiModalDatasetFolder(
             root=args.eval_data_path,
             modalities=args.all_domains,
-            modality_paths=modality_paths,
             modality_transforms=MODALITY_TRANSFORMS,
             modality_info=modality_info,
+            valid_ids=valid_ids,
             transform=transform,
+            tokenizer=text_tokenizer,
+            max_token_length=max_tok_len,
+            data_df=data_df,
         )
         if args.dist_eval:
             if len(dataset_val) % num_tasks != 0:
@@ -511,10 +587,12 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             dataset_metrics = MultiModalDatasetFolder(
                 root=args.eval_data_path,
                 modalities=args.all_domains,
-                modality_paths=modality_paths,
                 modality_transforms=MODALITY_TRANSFORMS,
                 modality_info=modality_info,
+                valid_ids=valid_ids,
                 transform=transform,
+                tokenizer=text_tokenizer,
+                max_token_length=max_tok_len,
                 pre_shuffle=True,
                 max_samples=args.num_eval_metrics_samples,
             )
@@ -549,10 +627,12 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             dataset_image_log = MultiModalDatasetFolder(
                 root=args.eval_data_path,
                 modalities=args.all_domains,
-                modality_paths=modality_paths,
                 modality_transforms=MODALITY_TRANSFORMS,
                 modality_info=modality_info,
+                valid_ids=valid_ids,
                 transform=transform,
+                tokenizer=text_tokenizer,
+                max_token_length=max_tok_len,
                 pre_shuffle=True,
                 max_samples=args.num_logged_images,
                 return_path=True,  # needed for overlaid images
@@ -590,7 +670,7 @@ def get_model(args, modality_info):
     print(f"Creating model: {args.model} for modalities {list(modality_info.keys())}")
 
     encoder_embeddings = {}
-    for mod in args.in_domains:
+    for mod in args.cond_domains:
         info = modality_info[mod]
         if info.get("encoder_embedding", None) is not None:
             if info["type"] == "img":
@@ -601,26 +681,17 @@ def get_model(args, modality_info):
                 )
             else:
                 encoder_embeddings[mod] = info["encoder_embedding"]()
-
-    decoder_embeddings = {}
-    for mod in args.out_domains:
-        info = modality_info[mod]
-        if info.get("decoder_embedding", None) is not None:
-            if info["type"] == "img":
-                image_size = info.get("input_size", args.input_size)
-                patch_size = info.get("patch_size", args.patch_size)
-                decoder_embeddings[mod] = info["decoder_embedding"](
-                    patch_size=patch_size, image_size=image_size
-                )
-            else:
-                decoder_embeddings[mod] = info["decoder_embedding"]()
+        else:
+            raise ValueError(f"Encoder embedding not found for modality {mod}")
 
     model = create_model(
         args.model,
         encoder_embeddings=encoder_embeddings,
-        decoder_embeddings=decoder_embeddings,
         modality_info=modality_info,
-        num_register_tokens=args.num_register_tokens,
+        num_train_timesteps=args.num_train_timesteps,
+        beta_schedule=args.beta_schedule,
+        thresholding=args.thresholding,
+        zero_terminal_snr=args.zero_terminal_snr,
     )
 
     return model
@@ -651,7 +722,6 @@ def main(args):
 
     # Distributed training variables
     num_tasks = utils.get_world_size()
-    args.num_tasks = num_tasks
     global_rank = utils.get_rank()
     sampler_rank = global_rank
 
@@ -692,7 +762,7 @@ def main(args):
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    model.to(device)
+    model.to(device, non_blocking=True)
     model_without_ddp = model
 
     print(f"Model = %s" % str(model_without_ddp))
@@ -714,9 +784,7 @@ def main(args):
     )
 
     if args.distributed:
-        model = DDP(
-            model, device_ids=[args.gpu], find_unused_parameters=args.find_unused_params
-        )
+        model = DDP(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
     optimizer = create_optimizer(args, model_without_ddp)
@@ -728,14 +796,13 @@ def main(args):
 
     main_schedule_epochs = args.epochs
 
-    if args.scheduler == "cosine":
+    if args.lr_and_wd_scheduler == "cosine":
         lr_schedule_values = utils.cosine_scheduler(
             args.lr,
             args.min_lr,
             main_schedule_epochs,
             num_training_steps_per_epoch,
             warmup_epochs=args.warmup_epochs,
-            warmup_steps=args.warmup_steps,
         )
         wd_schedule_values = utils.cosine_scheduler(
             args.weight_decay,
@@ -743,23 +810,19 @@ def main(args):
             main_schedule_epochs,
             num_training_steps_per_epoch,
         )
-    elif "inverse_sqrt" in args.scheduler:
+    elif "inverse_sqrt" in args.lr_and_wd_scheduler:
         try:
-            timescale = int(args.scheduler.split("-")[-1])
+            timescale = int(args.lr_and_wd.split("-")[-1])
         except:
             timescale = 10_000
-        lr_schedule_values = (
-            utils.inverse_sqrt_scheduler(  # TODO: look into these schedules
-                args.lr,
-                args.min_lr,
-                main_schedule_epochs,
-                num_training_steps_per_epoch,
-                warmup_epochs=args.warmup_epochs,
-                warmup_steps=args.warmup_steps,
-                cooldown_epochs=args.cooldown_epochs,
-                cooldown_steps=args.cooldown_steps,
-                timescale=timescale,
-            )
+        lr_schedule_values = utils.inverse_sqrt_scheduler(
+            args.lr,
+            args.min_lr,
+            main_schedule_epochs,
+            num_training_steps_per_epoch,
+            warmup_epochs=args.warmup_epochs,
+            cooldown_epochs=args.cooldown_epochs,
+            timescale=timescale,
         )
         wd_schedule_values = utils.inverse_sqrt_scheduler(
             args.weight_decay,
@@ -767,11 +830,12 @@ def main(args):
             main_schedule_epochs,
             num_training_steps_per_epoch,
             cooldown_epochs=args.cooldown_epochs,
-            cooldown_steps=args.cooldown_steps,
             timescale=timescale,
         )
     else:
-        raise NotImplementedError(f"Scheduler {args.scheduler} not implemented.")
+        raise NotImplementedError(
+            f"Scheduler {args.lr_and_wd_scheduler} not implemented."
+        )
 
     print(
         "Max WD = %.7f, Min WD = %.7f"
@@ -790,20 +854,20 @@ def main(args):
     # Evaluation noise scheduler
     if args.eval_noise_schedule in ["DDPMScheduler", "DDIMScheduler"]:
         eval_noise_schedule = getattr(sys.modules[__name__], args.eval_noise_schedule)(
-            num_train_timesteps=args.num_train_timesteps,
+            num_train_timesteps=args.num_eval_timesteps,
             beta_schedule=args.beta_schedule,
-            prediction_type=args.prediction_type.split("-")[0],
+            prediction_type="sample",  # Only type supported atm
             thresholding=args.thresholding,
-            clip_sample=False,
+            clip_sample=False,  # Doesn't make sense for our use case
             zero_terminal_snr=args.zero_terminal_snr,
         )
     elif args.eval_noise_schedule is not None:
         eval_noise_schedule = getattr(diffusers_schedulers, args.eval_noise_schedule)(
-            num_train_timesteps=args.num_train_timesteps,
+            num_train_timesteps=args.num_eval_timesteps,
             beta_schedule=args.beta_schedule,
-            prediction_type=args.prediction_type.split("-")[0],
+            prediction_type="sample",  # Only type supported atm
             thresholding=args.thresholding,
-            clip_sample=False,
+            clip_sample=False,  # Doesn't make sense for our use case
         )
     else:
         eval_noise_schedule = None
@@ -812,10 +876,10 @@ def main(args):
     if args.eval_only:
         if data_loader_val is None:
             raise ValueError("No evaluation data loader provided for eval only mode.")
-        eval_stats = launch_all_evals(
+        eval_stats = launch_evals(
             launch_eval=True,
-            launch_eval_metrics=data_loader_metrics is not None,
-            launch_eval_image_log=data_loader_image_log is not None,
+            launch_eval_metrics=True,
+            launch_eval_image_log=True,
             model=model,
             device=device,
             cond_domains=args.cond_domains,
@@ -829,7 +893,9 @@ def main(args):
             num_logged_images=args.num_logged_images,
             loss_type=args.loss_type,
             distance_type=args.distance_type,
+            cfg_scale=args.cfg_scale,
             log_writer=log_writer,
+            compute_metrics_on_cpu=not args.distributed,
         )
         if log_writer is not None:
             log_writer.update(eval_stats)
@@ -854,7 +920,6 @@ def main(args):
             max_norm=args.clip_grad,
             max_skip_norm=args.skip_grad,
             log_writer=log_writer,
-            lr_scheduler=None,  # TODO: should anything go here?
             start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values,
             wd_schedule_values=wd_schedule_values,
@@ -899,10 +964,10 @@ def main(args):
             and args.eval_image_log_freq > 0
             and ((epoch % args.eval_image_log_freq == 0) or is_last_epoch)
         )
-        # TODO: mask padding tokens
-        # change make sure argparse has all args, update all the docstrings,
-        # test (create config before)
-        eval_stats = launch_all_evals(
+        # TODO:
+        # test
+        # update all the docstrings,
+        eval_stats = launch_evals(
             launch_eval=launch_evaluate,
             launch_eval_metrics=launch_eval_metrics,
             launch_eval_image_log=launch_eval_image_log,
@@ -919,7 +984,9 @@ def main(args):
             num_logged_images=args.num_logged_images,
             loss_type=args.loss_type,
             distance_type=args.distance_type,
+            cfg_scale=args.cfg_scale,
             log_writer=log_writer,
+            compute_metrics_on_cpu=not args.distributed,
         )
         log_stats.update(eval_stats)
 
@@ -950,7 +1017,6 @@ def train_one_epoch(
     max_norm: float = None,
     max_skip_norm: float = None,
     log_writer=None,
-    lr_scheduler=None,
     start_steps=None,
     lr_schedule_values=None,
     wd_schedule_values=None,
@@ -978,9 +1044,7 @@ def train_one_epoch(
 
         if step % accum_iter == 0:
             if lr_schedule_values is not None or wd_schedule_values is not None:
-                for (
-                    param_group
-                ) in optimizer.param_groups:  # TODO: figure out param_groups
+                for param_group in optimizer.param_groups:
                     if lr_schedule_values is not None:
                         param_group["lr"] = (
                             lr_schedule_values[it] * param_group["lr_scale"]
@@ -1007,7 +1071,7 @@ def train_one_epoch(
         ).long()
 
         # Sample noise that we'll add to the images
-        noise = torch.randn(target_distribution.shape).to(device)
+        noise = torch.randn(target_distribution.shape).to(device, non_blocking=True)
 
         # Add noise to the clean images according to the noise magnitude at each timestep
         noisy_images = unwrap_model(model).noise_scheduler.add_noise(
@@ -1079,9 +1143,6 @@ def train_one_epoch(
             )
             log_writer.set_step()
 
-        if lr_scheduler is not None:
-            lr_scheduler.step_update(start_steps + step)
-
     # Gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -1093,7 +1154,7 @@ def train_one_epoch(
 
 
 @torch.no_grad()
-def launch_all_evals(
+def launch_evals(
     launch_eval: bool,
     launch_eval_metrics: bool,
     launch_eval_image_log: bool,
@@ -1110,7 +1171,9 @@ def launch_all_evals(
     num_logged_images: int = 9,
     loss_type: str = "bce",
     distance_type: str = "euclidean",
+    cfg_scale: float = 0.0,
     log_writer: Optional[utils.WandbLogger] = None,
+    compute_metrics_on_cpu: bool = False,
 ) -> Dict[str, float]:
     """Launcher for various evaluation functions: standard evaluation,
     evaluation of image metrics, and image logging.
@@ -1174,7 +1237,9 @@ def launch_all_evals(
             cond_domains=cond_domains,
             noise_schedule=eval_noise_schedule,
             num_diffusion_steps=num_eval_timesteps,
+            cfg_scale=cfg_scale,
             dtype=dtype,
+            compute_on_cpu=compute_metrics_on_cpu,
         )
         all_eval_stats.update(eval_metrics_results)
         model.train()
@@ -1191,6 +1256,7 @@ def launch_all_evals(
             noise_schedule=eval_noise_schedule,
             num_diffusion_steps=num_eval_timesteps,
             eval_data_root=eval_data_root,
+            cfg_scale=cfg_scale,
             dtype=dtype,
             num_logged_images=num_logged_images,
             log_writer=log_writer,
@@ -1236,7 +1302,7 @@ def eval(
         ).long()
 
         # Sample noise that we'll add to the images
-        noise = torch.randn(target_distribution.shape).to(device)
+        noise = torch.randn(target_distribution.shape).to(device, non_blocking=True)
 
         # Add noise to the clean images according to the noise magnitude at each timestep
         noisy_images = unwrap_model(model).noise_scheduler.add_noise(
@@ -1269,8 +1335,10 @@ def eval_metrics(
     cond_domains: List[str],
     noise_schedule: SchedulerMixin,
     num_diffusion_steps: int,
+    cfg_scale: float = 0.0,
     dtype: torch.dtype = torch.float16,
     header: str = "[Eval] ",
+    compute_on_cpu: bool = False,
 ) -> Dict[str, float]:
     """Compute (more expensive) validation image metrics (MS-SSIM, PSNR, MSE, MAE)
     using torchmetrics
@@ -1300,24 +1368,24 @@ def eval_metrics(
 
     # Initialize metrics
     mse_metric = MeanSquaredError(
-        squared=True, sync_on_compute=True, compute_on_cpu=False
-    ).to(device)
-    mae_metric = MeanAbsoluteError(sync_on_compute=True, compute_on_cpu=False).to(
-        device
-    )
+        squared=True, sync_on_compute=True, compute_on_cpu=compute_on_cpu
+    ).to(device, non_blocking=True)
+    mae_metric = MeanAbsoluteError(
+        sync_on_compute=True, compute_on_cpu=compute_on_cpu
+    ).to(device, non_blocking=True)
     psnr_metric = PeakSignalNoiseRatio(
         data_range=1.0,  # Input should be in [0, 1]
         reduction="elementwise_mean",
         sync_on_compute=True,
-        compute_on_cpu=False,
-    ).to(device)
+        compute_on_cpu=compute_on_cpu,
+    ).to(device, non_blocking=True)
     ms_ssim_metric = MultiScaleStructuralSimilarityIndexMeasure(
         data_range=1.0,
         reduction="elementwise_mean",
         normalize=False,
         sync_on_compute=True,
-        compute_on_cpu=False,
-    ).to(device)
+        compute_on_cpu=compute_on_cpu,
+    ).to(device, non_blocking=True)
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     for x in metric_logger.log_every(
@@ -1337,9 +1405,10 @@ def eval_metrics(
                 cond_mod_dict=mod_dict,
                 scheduler=noise_schedule,
                 timesteps=num_diffusion_steps,
+                cfg_scale=cfg_scale,
             )
 
-        target_distribution = x["target_distribution"].to(device)
+        target_distribution = x["target_distribution"].to(device, non_blocking=True)
 
         gt = target_distribution
         pred = spatial_softmax(logits)
@@ -1386,6 +1455,7 @@ def eval_image_log(
     eval_data_root: str,
     dtype: torch.dtype = torch.float16,
     num_logged_images: int = 9,
+    cfg_scale: float = 0.0,
     log_writer: Optional[utils.WandbLogger] = None,
     header: str = "[Eval] ",
 ) -> None:
@@ -1431,9 +1501,10 @@ def eval_image_log(
                     mod_dict,
                     scheduler=noise_schedule,
                     timesteps=num_diffusion_steps,
+                    cfg_scale=cfg_scale,
                 )
 
-            target_distribution = x["target_distribution"].to(device)
+            target_distribution = x["target_distribution"].to(device, non_blocking=True)
 
             gt = target_distribution
             pred = spatial_softmax(logits)
@@ -1442,7 +1513,9 @@ def eval_image_log(
             for target_dist, pred_dist, class_id, file_name in zip(
                 gt, pred, x["class_id"], x["file_name"]
             ):
-                rgb_img_path = os.path.join(eval_data_root, "rgb", class_id, file_name + ".tif")
+                rgb_img_path = os.path.join(
+                    eval_data_root, "rgb", class_id, file_name + ".tif"
+                )
                 imgs.append(create_overlaid_img(target_dist, pred_dist, rgb_img_path))
 
         # Log example images to wandb
@@ -1503,7 +1576,7 @@ def distance_weighted_loss(
         else:
             raise ValueError(f"Unsupported distance type: {distance_type}")
 
-    dists = (eps + dists).to(logits.device)
+    dists = (eps + dists).to(logits.device, non_blocking=True)
     pred = spatial_softmax(logits)
 
     if loss_type == "bce":
@@ -1601,11 +1674,10 @@ def create_overlaid_img(
 if __name__ == "__main__":
     args = get_args()
 
-    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (args.rlimit, rlimit[1]))
+    # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    # resource.setrlimit(resource.RLIMIT_NOFILE, (args.rlimit, rlimit[1]))
 
     utils.setup_run_name(args)
-    utils.setup_s3_args(args)
 
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
