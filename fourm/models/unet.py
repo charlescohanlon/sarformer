@@ -301,7 +301,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
 
         self.in_proj = nn.Linear(in_channels, model_channels)
 
-        total_num_conv_blocks = 2 * (len(channel_mult) - 1) * num_conv_blocks + 2
+        total_num_conv_blocks = 2 * (len(channel_mult) - 1) * num_conv_blocks
         dp_rates = [
             x.item() for x in torch.linspace(0, drop_path_rate, total_num_conv_blocks)
         ]
@@ -316,36 +316,30 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         for level, next_level in zip(channel_mult[:-2], channel_mult[1:-1]):
             # decrease spacial dims
             layers = [Downsample(scale_factor=level / next_level)] if level > 1 else []
-
             level_chans = model_channels * level
-            layers.extend(
-                [
-                    # isotropic
-                    ConvNeXtBlock(
-                        dim=level_chans,
-                        time_embed_dim=time_embed_dim,
-                        drop_path=dp_rates[dp_index + i],
-                        mlp_ratio=mlp_ratio,
-                        act_layer=act_layer,
-                    )
-                    for i in range(num_conv_blocks - 1)
-                ]
-            )
-            dp_index += num_conv_blocks - 1
-
             next_level_chans = model_channels * next_level
             layers.extend(
                 [
+                    *[
+                        # isotropic
+                        ConvNeXtBlock(
+                            dim=level_chans,
+                            time_embed_dim=time_embed_dim,
+                            drop_path=dp_rates[dp_index + i],
+                            mlp_ratio=mlp_ratio,
+                            act_layer=act_layer,
+                        )
+                        for i in range(num_conv_blocks - 1)
+                    ],
                     # increase embedding dims
                     ConvNeXtBlock(
                         dim=level_chans,
                         time_embed_dim=time_embed_dim,
                         output_dim=next_level_chans,
-                        drop_path=dp_rates[dp_index],
+                        drop_path=dp_rates[dp_index + num_conv_blocks - 1],
                         mlp_ratio=mlp_ratio,
                         act_layer=act_layer,
                     ),
-                    # isotropic
                     CrossAttentionBlock(
                         dim=next_level_chans,
                         cond_dim=cond_dim,
@@ -356,7 +350,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     ),
                 ]
             )
-            dp_index += 1
+            dp_index += num_conv_blocks
             self.down_blocks.append(TimestepEmbedSequential(*layers))
             down_chans.append(next_level_chans)
 
@@ -364,11 +358,23 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         last_level_chans = model_channels * channel_mult[-1]
         self.middle_block = TimestepEmbedSequential(
             Downsample(scale_factor=channel_mult[-2] / channel_mult[-1]),
+            *[
+                # isotropic
+                ConvNeXtBlock(
+                    dim=next_level_chans,
+                    time_embed_dim=time_embed_dim,
+                    drop_path=dp_rates[dp_index + i],
+                    mlp_ratio=mlp_ratio,
+                    act_layer=act_layer,
+                )
+                for i in range(num_conv_blocks - 1)
+            ],
+            # increase embedding dims
             ConvNeXtBlock(
                 dim=next_level_chans,
                 time_embed_dim=time_embed_dim,
                 output_dim=last_level_chans,
-                drop_path=dp_rates[dp_index],
+                drop_path=dp_rates[dp_index + num_conv_blocks - 1],
                 mlp_ratio=mlp_ratio,
                 act_layer=act_layer,
             ),
@@ -380,17 +386,29 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 proj_drop=proj_drop,
                 qkv_bias=qkv_bias,
             ),
+            *[
+                # isotropic
+                ConvNeXtBlock(
+                    dim=last_level_chans,
+                    time_embed_dim=time_embed_dim,
+                    drop_path=dp_rates[dp_index + num_conv_blocks + i],
+                    mlp_ratio=mlp_ratio,
+                    act_layer=act_layer,
+                )
+                for i in range(num_conv_blocks - 1)
+            ],
+            # decrease embedding dims
             ConvNeXtBlock(
                 dim=last_level_chans,
                 time_embed_dim=time_embed_dim,
-                output_dim=next_level_chans,  # chans from final down block
-                drop_path=dp_rates[dp_index + 1],
+                output_dim=next_level_chans,
+                drop_path=dp_rates[dp_index + num_conv_blocks * 2 - 1],
                 mlp_ratio=mlp_ratio,
                 act_layer=act_layer,
             ),
             Upsample(scale_factor=channel_mult[-1] / channel_mult[-2]),
         )
-        dp_index += 2
+        dp_index += 2 * num_conv_blocks
 
         # Upsampling
         self.up_blocks = nn.ModuleList([])
@@ -403,6 +421,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 ConvNeXtBlock(
                     dim=prev_level_chans + down_chans.pop(),
                     time_embed_dim=time_embed_dim,
+                    # if only one conv block (so this is the last) reduce chans
                     output_dim=(
                         level_chans if num_conv_blocks == 1 else prev_level_chans
                     ),
@@ -410,23 +429,18 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     mlp_ratio=mlp_ratio,
                     act_layer=act_layer,
                 ),
-            ]
-            dp_index += 1
-            layers.extend(
-                [
+                *[
                     ConvNeXtBlock(
                         dim=prev_level_chans,
                         time_embed_dim=time_embed_dim,
+                        # reduces chans if the last conv block, otherwise isotropic
                         output_dim=level_chans if i == num_conv_blocks - 2 else None,
-                        drop_path=dp_rates[dp_index + i],
+                        drop_path=dp_rates[dp_index + 1 + i],
                         mlp_ratio=mlp_ratio,
                         act_layer=act_layer,
                     )
                     for i in range(num_conv_blocks - 1)
-                ]
-            )
-            dp_index += num_conv_blocks - 1
-            layers.append(
+                ],
                 CrossAttentionBlock(
                     dim=level_chans,
                     cond_dim=cond_dim,
@@ -434,8 +448,9 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     attn_drop=attn_drop,
                     proj_drop=proj_drop,
                     qkv_bias=qkv_bias,
-                )
-            )
+                ),
+            ]
+            dp_index += num_conv_blocks
             if level > 1:  # don't upsample again at the top level
                 layers.append(Upsample(scale_factor=prev_level / level))
             self.up_blocks.append(TimestepEmbedSequential(*layers))
@@ -559,14 +574,3 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
 
     def __len__(self):
         return super().__len__()
-
-
-def patched_convnext_unet_b(**kwargs):
-    return PatchedConvNeXtUNet(
-        patch_size=4,
-        model_channels=64,
-        num_conv_blocks=3,
-        channel_mult=(1, 2, 4, 8, 16),  # the last element is the middle block
-        mlp_ratio=4.0,
-        **kwargs,
-    )
