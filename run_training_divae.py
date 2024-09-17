@@ -71,7 +71,7 @@ from fourm.utils import ModelEmaV2 as ModelEma
 from fourm.vq.vqvae import DiVAE
 from fourm.vq.vq_utils import compute_codebook_usage
 
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_DIVAE
+from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS_VQVAE
 from fourm.data.modality_transforms import (
     DepthTransform,
     UnifiedDataTransform,
@@ -897,14 +897,14 @@ def main(args: argparse.Namespace) -> None:
     # these override transforms in MODALITY_TRANFORMS_DIVAE from modality_info.py
     # transform classes are used to both load (or create) and augment the data
     if args.domain == "rgb":
-        MODALITY_TRANSFORMS_DIVAE["rgb"] = RGBTransform(
+        MODALITY_TRANSFORMS_VQVAE["rgb"] = RGBTransform(
             mean_and_std=args.mean_and_std,
             color_jitter=False,
             # (fills the empty regions after rotation with this)
             no_data_value=modality_info["rgb"]["no_data_value"],
         )
     elif args.domain == "depth":
-        MODALITY_TRANSFORMS_DIVAE["depth"] = DepthTransform(
+        MODALITY_TRANSFORMS_VQVAE["depth"] = DepthTransform(
             # carries out operations in order of list
             norm_ops=["depth_minmax_scaling"],
             # (fills the empty regions after rotation with this)
@@ -963,7 +963,7 @@ def main(args: argparse.Namespace) -> None:
         data_loader_train = build_wds_divae_dataloader(
             data_path=args.data_path,
             modality_info=modality_info,
-            modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_transforms=MODALITY_TRANSFORMS_VQVAE,
             image_augmenter=image_augmenter_train,
             num_gpus=num_tasks,
             num_workers=args.num_workers,
@@ -979,7 +979,7 @@ def main(args: argparse.Namespace) -> None:
         )
     else:
         transforms_train = UnifiedDataTransform(
-            transforms_dict=MODALITY_TRANSFORMS_DIVAE,
+            transforms_dict=MODALITY_TRANSFORMS_VQVAE,
             image_augmenter=image_augmenter_train,
             resample_mode=args.rotation_resample_mode,
         )
@@ -987,7 +987,7 @@ def main(args: argparse.Namespace) -> None:
             root=args.data_path,
             modalities=args.all_domains,
             modality_paths=modality_paths,
-            modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_transforms=MODALITY_TRANSFORMS_VQVAE,
             modality_info=modality_info,
             transform=transforms_train,
         )
@@ -1021,7 +1021,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
         transforms_val = UnifiedDataTransform(
-            transforms_dict=MODALITY_TRANSFORMS_DIVAE,
+            transforms_dict=MODALITY_TRANSFORMS_VQVAE,
             image_augmenter=image_augmenter_val,
             resample_mode=args.rotation_resample_mode,
         )
@@ -1030,7 +1030,7 @@ def main(args: argparse.Namespace) -> None:
             root=args.eval_data_path,
             modalities=args.all_domains,
             modality_paths=modality_paths,
-            modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+            modality_transforms=MODALITY_TRANSFORMS_VQVAE,
             modality_info=modality_info,
             transform=transforms_val,
         )
@@ -1066,7 +1066,7 @@ def main(args: argparse.Namespace) -> None:
                 root=args.eval_data_path,
                 modalities=args.all_domains,
                 modality_paths=modality_paths,
-                modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+                modality_transforms=MODALITY_TRANSFORMS_VQVAE,
                 modality_info=modality_info,
                 transform=transforms_val,
                 pre_shuffle=True,
@@ -1108,7 +1108,7 @@ def main(args: argparse.Namespace) -> None:
                 root=args.eval_data_path,
                 modalities=args.all_domains,
                 modality_paths=modality_paths,
-                modality_transforms=MODALITY_TRANSFORMS_DIVAE,
+                modality_transforms=MODALITY_TRANSFORMS_VQVAE,
                 modality_info=modality_info,
                 transform=transforms_val,
                 pre_shuffle=True,

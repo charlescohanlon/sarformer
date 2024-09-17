@@ -40,7 +40,7 @@ except Exception as e:
     USE_DETECTRON = False
 
 from fourm.data.modality_transforms import (
-    get_transform_key,
+    get_modality_prefix,
     get_transform_resolution,
     StructuredDataTransform,
 )
@@ -146,7 +146,7 @@ def decode_tok_rgb(
         nh=image_size // patch_size,
         nw=image_size // patch_size,
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(
         img_tok, timesteps=t, image_size=image_size, verbose=verbose
     )
     rec = destandardize(rec, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)).clamp(0, 1)
@@ -223,7 +223,7 @@ def decode_tok_normal(
         nh=image_size // patch_size,
         nw=image_size // patch_size,
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(
         img_tok, timesteps=t, image_size=image_size, verbose=verbose
     )
     rec = destandardize(rec, (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)).clamp(0, 1)
@@ -257,7 +257,7 @@ def decode_tok_canny_edge(
         nh=image_size // patch_size,
         nw=image_size // patch_size,
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(
         img_tok, timesteps=t, image_size=image_size, verbose=verbose
     )
     rec = (0.5 * (rec + 1)).clamp(0, 1)
@@ -291,7 +291,7 @@ def decode_tok_sam_edge(
         nh=image_size // patch_size,
         nw=image_size // patch_size,
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(
         img_tok, timesteps=t, image_size=image_size, verbose=verbose
     )
     rec = (0.5 * (rec + 1)).clamp(0, 1)
@@ -327,7 +327,7 @@ def decode_tok_depth(
         nh=image_size // patch_size,
         nw=image_size // patch_size,
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(
         img_tok, timesteps=t, image_size=image_size, verbose=verbose
     )
     rec = rec.detach().cpu().numpy()[:, 0]
@@ -377,7 +377,7 @@ def decode_tok_semseg(
         nh=image_size // patch_size,
         nw=image_size // patch_size,
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(img_tok).detach().cpu()
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(img_tok).detach().cpu()
     if return_logits:
         return rec
     semsegs = rec.argmax(1)
@@ -422,7 +422,7 @@ def decode_tok_clip(
     img_tok = rearrange(
         mod_dict[key]["tensor"], "b (nh nw) -> b nh nw", nh=n_patches, nw=n_patches
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(img_tok)
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(img_tok)
     pca_viz = [pca_visualize(feat) for feat in rec]
     pca_viz = np_squeeze(np.stack(pca_viz), axis=0)
     return pca_viz
@@ -446,7 +446,7 @@ def decode_tok_dinov2(
     img_tok = rearrange(
         mod_dict[key]["tensor"], "b (nh nw) -> b nh nw", nh=n_patches, nw=n_patches
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(img_tok)
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(img_tok)
     pca_viz = [pca_visualize(feat) for feat in rec]
     pca_viz = np_squeeze(np.stack(pca_viz), axis=0)
     return pca_viz
@@ -470,7 +470,7 @@ def decode_tok_imagebind(
     img_tok = rearrange(
         mod_dict[key]["tensor"], "b (nh nw) -> b nh nw", nh=n_patches, nw=n_patches
     )
-    rec = tokenizers[get_transform_key(key)].decode_tokens(img_tok)
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(img_tok)
     pca_viz = [pca_visualize(feat) for feat in rec]
     pca_viz = np_squeeze(np.stack(pca_viz), axis=0)
     return pca_viz
@@ -488,7 +488,7 @@ def decode_tok_dinov2_global(mod_dict, tokenizers, key="tok_dinov2_global"):
         patch_size (int): Size of the patches.
     """
     toks = rearrange(mod_dict[key]["tensor"].long(), "b n -> b n 1 1")
-    rec = tokenizers[get_transform_key(key)].decode_tokens(toks)
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(toks)
     return rec.squeeze()
 
 
@@ -504,7 +504,7 @@ def decode_tok_imagebind_global(mod_dict, tokenizers, key="tok_imagebind_global"
         patch_size (int): Size of the patches.
     """
     toks = rearrange(mod_dict[key]["tensor"].long(), "b n -> b n 1 1")
-    rec = tokenizers[get_transform_key(key)].decode_tokens(toks)
+    rec = tokenizers[get_modality_prefix(key)].decode_tokens(toks)
     return rec.squeeze()
 
 
@@ -904,7 +904,7 @@ def decode_dict(
     dec_dict = {}
 
     for key in mod_dict:
-        k, res = get_transform_key(key), get_transform_resolution(
+        k, res = get_modality_prefix(key), get_transform_resolution(
             key, image_size, to_tuple=False
         )
 
@@ -1552,7 +1552,7 @@ def plot_modality(dec_dict, key, ax, figscale=4.0):
         figscale (float): Scaling factor for the figure (used to scale the caption box)
     """
     modality = dec_dict[key]
-    k = get_transform_key(key)
+    k = get_modality_prefix(key)
 
     if "tok" in k or k == "rgb" or k == "human_poses" or k == "color_palette":
         ax.imshow(modality.clip(0, 1))

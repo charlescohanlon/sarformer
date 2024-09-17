@@ -2,6 +2,8 @@
 
 ## Random Notes
 
+Should validate the weather columns we use so we can cite them
+
 Depth data has inf
 
 Get NAIP and DEM equivalent for nonUS?

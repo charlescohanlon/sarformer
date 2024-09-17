@@ -72,21 +72,21 @@ MODALITY_INFO = {
         "pretokenized": True,
         "path": "tok_depth",
     },
-    "rgb@224": {  # used for tokenizer training
+    "rgb": {  # used for tokenizer training
         "type": "img",
         "num_channels": 3,
         "id": generate_uint15_hash("rgb"),
         "path": "rgb",
         "no_data_value": 0,
     },
-    "depth@224": {  # used for tokenizer training
+    "depth": {  # used for tokenizer training
         "type": "img",
         "num_channels": 1,
         "id": generate_uint15_hash("depth"),
         "no_data_value": -9999.0,
         "path": "depth",
     },
-    "structureddata": {
+    "structured_data": {
         "vocab_size": 30_000,
         "encoder_embedding": partial(
             SequenceEncoderEmbedding,
@@ -98,7 +98,7 @@ MODALITY_INFO = {
         "min_tokens": 0,
         "max_tokens": None,
         "type": "seq",
-        "id": generate_uint15_hash("structureddata"),
+        "id": generate_uint15_hash("structured_data"),
         "path": None,
     },
 }
@@ -123,10 +123,9 @@ ID_MAP = {  # for structured data transform
             "total_column_water_vapour",
             "skin_temperature",
             "precipitation_type",
-            "duration",
-            "start_date",
-            "start_time",
-            "prompt",
+            # "duration",
+            # "start_date",
+            # "start_time",
             "min_elevation",
             "max_elevation",
         ]
@@ -135,11 +134,9 @@ ID_MAP = {  # for structured data transform
 
 MODALITY_TRANSFORMS = {
     "caption": CaptionTransform(caption_name="prompt"),
-    "tok_rgb@224": TokTransform(),
-    "tok_depth@224": TokTransform(),
-    "structureddata": StructuredDataTransform(
-        id_map=ID_MAP, shuffle=True, value_type=np.float16
-    ),
+    "tok_rgb": TokTransform(),
+    "tok_depth": TokTransform(),
+    "structured_data": StructuredDataTransform(id_map=ID_MAP, shuffle=True),
     "target_distribution": TargetDistributionTransform(
         spatial_res=2,
         img_size=224,
@@ -150,10 +147,10 @@ MODALITY_TRANSFORMS = {
 }
 
 MODALITY_TRANSFORMS_VQVAE = {
-    "rgb@224": RGBTransform(
+    "rgb": RGBTransform(
         mean_and_std="naip", no_data_value=MODALITY_INFO["rgb"]["no_data_value"]
     ),
-    "depth@224": DepthTransform(
+    "depth": DepthTransform(
         norm_ops=["depth_minmax_scaling"],
         no_data_value=MODALITY_INFO["depth"]["no_data_value"],
     ),

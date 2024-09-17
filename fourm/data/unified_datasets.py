@@ -42,7 +42,7 @@ except ImportError:
 from fourm.data.masking import TransferMasking, UnifiedMasking
 from fourm.data.modality_transforms import (
     UnifiedDataTransform,
-    get_transform_key,
+    get_modality_prefix,
 )
 from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
 from fourm.utils.dist import get_rank, get_world_size
@@ -282,7 +282,7 @@ def apply_modality_transforms(sample, modality_transforms):
     """Applies a dictionary of modality-specific transforms to a dictionary of modalities."""
     return {
         k: (
-            modality_transforms[get_transform_key(k)](v)
+            modality_transforms[get_modality_prefix(k)](v)
             if k in modality_transforms
             else v
         )

@@ -188,7 +188,8 @@ class ImageTokenEncoderEmbedding(nn.Module):
 
         Args:
             d (Dict[str, torch.Tensor]): Modality dict with at least the following key:
-                - 'tensor' (torch.Tensor): Input image tokens for each batch. Shape (B, H, W) where B is the batch size, and H, W are height and width of the tokenized image.                - 'input_mask' (torch.Tensor): Mask for valid tokens in the input sequence (set to 0 for valid tokens and 1 otherwise). Shape (B, L).
+                - 'tensor' (torch.Tensor): Input image tokens for each batch. Shape (B, H, W) where B is the batch size, and H, W are height and width of the tokenized image.                
+                - 'input_mask' (torch.Tensor): Mask for valid tokens in the input sequence (set to 0 for valid tokens and 1 otherwise). Shape (B, L).
 
         Returns:
             Dict[str, torch.Tensor]: Modality dictionary with added keys:
