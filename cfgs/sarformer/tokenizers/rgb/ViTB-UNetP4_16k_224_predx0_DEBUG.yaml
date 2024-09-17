@@ -83,7 +83,7 @@ wandb_project: rgb_tokenizer
 wandb_entity: sarformer
 wandb_run_name: auto
 output_dir: ""
-log_coebook_usage: True # also just to make it explicit
+log_codebook_usage: True # also just to make it explicit
 show_user_warnings: False
 
 # Misc.

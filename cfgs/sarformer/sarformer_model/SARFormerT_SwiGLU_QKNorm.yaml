@@ -1,0 +1,63 @@
+run_name: auto
+
+# Model
+model: sarformer_t_swiglu_qknorm
+cond_domains: ['tok_rgb@224', 'tok_depth@224', 'caption', 'structured_data']
+input_size: 224 # training script needs this for math
+
+# Diffusion
+num_train_timesteps: 1000 # number of diffusion steps during training
+beta_schedule: linear # noise schedule
+zero_terminal_snr: True
+cfg_scale: 0.0 # No cfg
+
+# Train
+dtype: bf16 # fp32, fp16 or bf16
+warmup_epochs: 0
+epochs: 1
+opt: adamw
+opt_betas: [0.9, 0.99]
+blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
+warmup_lr: 0.000001 # 1e-6
+min_lr: 0.
+batch_size: 80 # per GPU
+save_ckpt_freq: 10 # in epochs
+weight_decay: 0.05 # the default
+lr_and_wd_schedule: cosine
+
+# Eval
+eval_freq: 1
+eval_metrics_freq: 1
+eval_image_log_freq: 1
+num_eval_metrics_samples: 2000 # Number of samples to use for evaluating image metrics during training.
+num_logged_images: 9
+eval_noise_schedule: DDIMScheduler
+num_eval_timesteps: 50
+dist_eval: True
+data_path: '/scratch/bdej/cohanlon/data/train'
+eval_data_path: '/scratch/bdej/cohanlon/data/eval'
+
+# Loss
+loss_type: mse
+distance_type: euclidean
+
+# Data
+text_tokenizer_path: 'fourm/utils/tokenizer/trained/tokenizer_inc_nonUS_lower.json'
+max_text_length: 512 # captions will be padded or truncated to this length
+data_csv_path: '/scratch/bdej/cohanlon/data/labeled_sar_data.csv'
+csv_delimiter: '@'
+csv_index_col: uid
+
+# Logging
+log_wandb: True
+wandb_project: sarformer_model
+wandb_entity: sarformer
+wandb_run_name: auto
+output_dir: 'checkpoints/models/auto'
+show_user_warnings: False
+compute_grad_norm: True
+
+# Misc.
+device: cuda
+num_workers: 110 # for data loaders
+
