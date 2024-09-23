@@ -572,29 +572,20 @@ class StructuredDataTransform(TextTokenizedTransform):
         for k in keys:
             type_str = f"v0={self.id_map[k]}"
 
-            val = data[k]
-            if isinstance(val, str):
-                if "-" in val:  # TODO: finish this when we get time and data cols
-                    val = val.replace("-", "--")
-
-                val_str = f'v1="{val}"'
-                data_str += f"{type_str} {val_str} "
+            val = data[k]  # TODO: with the time data, this might be a string
+            val = np.float32(val)
+            if val == 0.0:
+                hex_str = "0" * 8  # using struct gives '0x0', but we need 8 hex zeros
             else:
-                val = np.float32(val)
-                if val == 0.0:
-                    hex_str = (
-                        "0" * 8
-                    )  # using struct gives '0x0', but we need 8 hex zeros
-                else:
-                    # Converts floating point to hexadecimal string
-                    # Courtesy of https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
-                    hex_str = str(hex(struct.unpack("<I", struct.pack("<f", val))[0]))
-                    hex_str = hex_str[2:]  # removes '0x'
-                    hex_str = hex_str.upper()
+                # Converts floating point to hexadecimal string
+                # Courtesy of https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
+                hex_str = str(hex(struct.unpack("<I", struct.pack("<f", val))[0]))
+                hex_str = hex_str[2:]  # removes '0x'
+                hex_str = hex_str.upper()
 
-                byte_strs = [hex_str[i : i + 2] for i in range(0, len(hex_str), 2)]
-                val_str = f"v1=[{']['.join(byte_strs)}]"  # e.g. v1=[0A][B3] for float16
-                data_str += f"{type_str} {val_str} "
+            byte_strs = [hex_str[i : i + 2] for i in range(0, len(hex_str), 2)]
+            val_str = f"v1=[{']['.join(byte_strs)}]"  # e.g. v1=[0A][B3] for float16
+            data_str += f"{type_str} {val_str} "
 
         return data_str
 
@@ -627,6 +618,9 @@ class StructuredDataTransform(TextTokenizedTransform):
         ), "Tokenizer must be set for structured data transform"
         enc = self.tokenizer.encode(sample)
         ids = torch.as_tensor(enc.ids)
+
+        if len(ids) < 108:  # temp fix for weird varied length structured data bug
+            ids = torch.cat((ids, torch.zeros(108 - len(ids), dtype=torch.long)), dim=0)
 
         return ids
 

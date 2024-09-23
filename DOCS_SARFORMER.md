@@ -2,18 +2,24 @@
 
 ## Random Notes
 
-Should validate the weather columns we use so we can cite them
+### Projects
+
+Cameron: train mlp tokenizer for structured_data
+- I'll need to request more Inodes
+- Should validate the weather columns we use so we can cite them
+- include columns for whether a value was imputed or not (See that youtube vid)
+
+Charles: VQ-VAE for RGB and depth instead of DiVAE b/c we don't really care about reconstruction quality, we're more worried about the quality of the representation and VQ-VAE is less expensive to train
+- Need to regenerate the SAR rgb and depth images first
+- Get NAIP and DEM equivalent for nonUS
+
+Use Norm Attention in Unet?
 
 Depth data has inf
-
-Get NAIP and DEM equivalent for nonUS?
 
 Should log hparams and give runs unique IDs or something
 
 The data we evaluate on has to be ALL real so no generated times or dates either
-
-For when we use a learned tokenizer for the structured data, include columns for whether a value was imputed or not
-(See that youtube vid)
 
 Explanation:
 So the other day I was thinking and as you guys know pre-training with a masked modeling objective is only a bandaid,
@@ -40,28 +46,25 @@ Review how we did each of the imputations
 
 ### Stuff to Try
 
-- VQ-VAE for RGB and depth instead of DiVAE b/c we don't really care about reconstruction quality, we're more worried
-about the quality of the representation and VQ-VAE is less expensive to train
-- weight real data in loss function
+- analytic approach to choosing eval split
+- weight labeled data data in loss function
 - regenerate MC @ 224
     - stratified sampling of different regions
     - regenerate corresponding LLM prompts
-- taking analytic approach to choosing eval split
-- optimize eval (wtf is running on CPU?)
-- use MLP tokenizer with structured data instead of wordpiece
 
 ### Experiments and Visualizations
 
-- baseline model w/ only labeled data vs. labeled + unlabeled vs. labeled + unlabeled + synthetic
 - attention visualization
     - take attention weights from encoder's first attention block?
 - dimensionality reduction
     - take latent space from somewhere?
-- measure accuracy with model size?
-- vary euclidean dist loss vs no euclidean dist loss
 - domain adaptation: leave an SAR set out and see how well it does w/ zero-shot
-- contributions of a few modalities
-    - compare performance when not included
+
+#### To Ablate:
+
+- modalities
+- pixel distance weighting of loss
+- model size
 
 
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from functools import partial
+from math import sin
 
 import numpy as np
 import pandas as pd
@@ -31,28 +32,20 @@ from fourm.models.encoder_embeddings import (
 from fourm.utils import generate_uint15_hash
 
 MODALITY_INFO = {
-    "caption": {
-        "vocab_size": 30_000,
-        "encoder_embedding": partial(
-            SequenceEncoderEmbedding, vocab_size=30_000, max_length=256, padding_idx=0
-        ),
-        "min_tokens": 0,
-        "max_tokens": 256,
-        "type": "seq",
-        "id": generate_uint15_hash("caption"),
-        "path": None,  # path None indicates data comes from csv
-    },
     "target_distribution": {
-        "type": "img",
-        "num_channels": 1,
         "id": generate_uint15_hash("target_distribution"),
         "path": None,
     },
     "tok_rgb@224": {
+        "vocab_size": 16384,
         "input_size": 224,
         "patch_size": 16,
-        "vocab_size": 16384,
-        "encoder_embedding": partial(ImageTokenEncoderEmbedding, vocab_size=16384),
+        "encoder_embedding": partial(
+            ImageTokenEncoderEmbedding,
+            vocab_size=16384,
+            patch_size=16,
+            image_size=224,
+        ),
         "min_tokens": 0,
         "max_tokens": None,  # Will be set to 196
         "type": "img",
@@ -61,10 +54,15 @@ MODALITY_INFO = {
         "path": "tok_rgb",
     },
     "tok_depth@224": {
+        "vocab_size": 8192,
         "input_size": 224,
         "patch_size": 16,
-        "vocab_size": 8192,
-        "encoder_embedding": partial(ImageTokenEncoderEmbedding, vocab_size=8192),
+        "encoder_embedding": partial(
+            ImageTokenEncoderEmbedding,
+            vocab_size=8192,
+            patch_size=16,
+            image_size=224,
+        ),
         "min_tokens": 0,
         "max_tokens": None,  # Will be set to 196
         "type": "img",
@@ -86,14 +84,30 @@ MODALITY_INFO = {
         "no_data_value": -9999.0,
         "path": "depth",
     },
+    "caption": {
+        "vocab_size": 30_000,
+        "encoder_embedding": partial(
+            SequenceEncoderEmbedding,
+            vocab_size=30_000,
+            max_length=516,  # Results in a total sequence length divisble by 8
+            max_sincos_pos_emb=516,
+            padding_idx=0,  # Needed for embedding table
+        ),
+        "min_tokens": 0,
+        "max_tokens": 516,
+        "type": "seq",
+        "id": generate_uint15_hash("caption"),
+        "path": None,  # path None indicates data comes from csv
+    },
     "structured_data": {
         "vocab_size": 30_000,
         "encoder_embedding": partial(
             SequenceEncoderEmbedding,
             vocab_size=30_000,
-            max_length=40,
+            max_length=108,  # NOTE: This needs to match the fixed length of the structured data
+            sincos_pos_emb=True,  # the default, but explicit here
+            max_sincos_pos_emb=108,
             padding_idx=0,
-            sincos_pos_emb=True,
         ),
         "min_tokens": 0,
         "max_tokens": None,
@@ -136,7 +150,9 @@ MODALITY_TRANSFORMS = {
     "caption": CaptionTransform(caption_name="prompt"),
     "tok_rgb": TokTransform(),
     "tok_depth": TokTransform(),
-    "structured_data": StructuredDataTransform(id_map=ID_MAP, shuffle=True),
+    "structured_data": StructuredDataTransform(
+        id_map=ID_MAP, shuffle=False  # turn off shuffling for now
+    ),
     "target_distribution": TargetDistributionTransform(
         spatial_res=2,
         img_size=224,

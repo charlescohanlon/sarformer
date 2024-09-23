@@ -14,7 +14,7 @@
 import argparse
 import datetime
 import json
-from einops import rearrange, repeat
+from einops import repeat
 import wandb
 import math
 import os
@@ -23,7 +23,7 @@ import time
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Iterable, List, Optional, Dict, Union
+from typing import Iterable, List, Optional, Dict, Union, Tuple
 import gc
 
 import numpy as np
@@ -31,6 +31,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, SequentialSampler, DistributedSampler
 import torch.backends.cudnn as cudnn
 from torch.nn.parallel import DistributedDataParallel as DDP
 import yaml
@@ -53,6 +54,8 @@ from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
 from fourm.utils import create_model
 from fourm.utils.optim_factory import create_optimizer
 from fourm.utils import NativeScalerWithGradNormCount as NativeScaler
+
+import fourm.models.sarformer  # Needed for @register_model to work
 
 
 def get_args():
@@ -81,6 +84,18 @@ def get_args():
         "Effective batch size is batch_size * accum_iter * # gpus",
     )
     parser.add_argument(
+        "--input_size",
+        default=None,
+        type=Optional[int],
+        help="The input size for image-like modalities",
+    )
+    parser.add_argument(
+        "--patch_size",
+        default=None,
+        type=Optional[int],
+        help="The patch size for image-like modalities",
+    )
+    parser.add_argument(
         "--epochs",
         default=100,
         type=int,
@@ -104,12 +119,6 @@ def get_args():
         "--model",
         type=str,
         help="Name of model to train (no default, must be specified)",
-    )
-    parser.add_argument(
-        "--input_size",
-        default=224,
-        type=int,
-        help="Images input size for backbone (default: %(default)s)",
     )
     parser.add_argument(
         "--dtype",
@@ -216,7 +225,6 @@ def get_args():
         "--lr_and_wd_scheduler",
         type=str,
         default="cosine",
-        choices=["cosine", "inverse_sqrt-10000"],
         help="Learning rate scheduler type (default: %(default)s",
     )
     parser.add_argument(
@@ -240,12 +248,6 @@ def get_args():
         default=None,
         help="Path to trained text tokenizer",
     )
-    parser.add_argument(
-        "--max_text_length",
-        type=int,
-        default="512",
-        help="Maximum number of tokens in text input (default: %(default)s)",
-    )
 
     # Data
     parser.add_argument(
@@ -264,11 +266,6 @@ def get_args():
         type=str,
         default="uid",
         help="Index column for CSV file containing structured data. (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--use_valid_ids",
-        action="store_true",
-        help="If a dataframe is provided use it's index as valid_ids for dataset creation",
     )
     parser.add_argument(
         "--no_use_valid_ids", action="store_false", dest="use_valid_ids"
@@ -418,7 +415,7 @@ def get_args():
     parser.add_argument("--resume", default="", help="resume from checkpoint")
     parser.add_argument("--auto_resume", action="store_true")
     parser.add_argument("--no_auto_resume", action="store_false", dest="auto_resume")
-    parser.set_defaults(auto_resume=True)
+    parser.set_defaults(auto_resume=False)
 
     parser.add_argument("--start_epoch", default=0, type=int, help="start epoch")
     parser.add_argument("--num_workers", default=10, type=int)
@@ -451,6 +448,17 @@ def get_args():
         "--wandb_run_name", default="auto", type=str, help="Run name on wandb"
     )
 
+    # Distributed training parameters
+    parser.add_argument(
+        "--dist_url", default="env://", help="url used to set up distributed training"
+    )
+    parser.add_argument(
+        "--print_all",
+        action="store_true",
+        default=False,
+        help="Determines whether all gpu process print or just the main one.",
+    )
+
     # Parse config file if there is one
     args_config, remaining = config_parser.parse_known_args()
 
@@ -471,13 +479,17 @@ def get_args():
 
 def setup_modality_info(args):
     # Global modality info
-    modality_info = {mod: MODALITY_INFO[mod] for mod in args.all_domains}
+    modality_info = MODALITY_INFO
 
     # Max tokens
     for mod in modality_info:
-        image_size = modality_info[mod].get("input_size", args.input_size)
-        patch_size = modality_info[mod].get("patch_size", args.patch_size)
-        if modality_info[mod]["type"] == "img":
+        if "type" in modality_info and modality_info[mod]["type"] == "img":
+            image_size = modality_info[mod].get("input_size", args.input_size)
+            patch_size = modality_info[mod].get("patch_size", args.patch_size)
+            if image_size is None or patch_size is None:
+                raise ValueError(
+                    f"Could not find image size and patch size for modality {mod}"
+                )
             num_patches = (image_size // patch_size) ** 2
             modality_info[mod]["max_tokens"] = num_patches
 
@@ -489,65 +501,118 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
     # Set up shared modality info
     modality_info = setup_modality_info(args)
 
+    # Text
     text_tokenizer = None
     if args.text_tokenizer_path:
-        if args.max_text_length is None:
-            raise ValueError("Must provide max_text_length if using a text tokenizer")
         text_tokenizer = Tokenizer.from_file(args.text_tokenizer_path)
-        max_tok_len = args.max_text_length
+        max_text_tok_len = modality_info["caption"]["max_tokens"]
 
-    # Text prompts and structured data
+    # Structured data and text
     data_df = None
     if args.data_csv_path:
         data_df = pd.read_csv(
             args.data_csv_path, sep=args.csv_delimiter, index_col=args.csv_index_col
         )
 
-    valid_ids = None
-    if args.use_valid_ids:
-        if data_df is None:
+    # Configure train and eval splits
+    mod_with_path = None  # check arbitrary modality for ids
+    for d in modality_info.values():
+        if d.get("path", None) is not None:
+            mod_with_path = d["path"]
+            break
+
+    train_ids, eval_ids = None, None
+    if mod_with_path is None:
+        # If no mods have a path we're only using mods that come from csv so provide splits by file
+        if not args.eval_only:
+            if args.train_ids_path is None:
+                raise ValueError(
+                    "Must provide train_ids_path for csv-only mods train split"
+                )
+            with open(args.train_ids_path, "r") as f:
+                train_ids = f.read().splitlines()
+
+        if args.eval_data_path:
+            if args.eval_ids_path is None:
+                raise ValueError(
+                    "Must provide eval_ids_path for csv-only mods eval split"
+                )
+            with open(args.eval_ids_path, "r") as f:
+                eval_ids = f.read().splitlines()
+    else:
+        # Otherwise, use intersections of csv and file (if a csv is provided) or just file-based splits
+        # This assumes all file-based modalities have the same split ids
+        if not args.eval_only:
+            train_mod_path = os.path.join(args.data_path, mod_with_path)
+            # pick arbitrary class to look at
+            cls = os.listdir(train_mod_path)[0]
+            train_cls_uids = [
+                n.split(".")[0] for n in os.listdir(os.path.join(train_mod_path, cls))
+            ]
+            if args.data_csv_path:
+                train_ids = list(set(train_cls_uids).intersection(set(data_df.index)))
+            else:
+                train_ids = train_cls_uids
+
+        if args.eval_data_path:
+            eval_mod_path = os.path.join(args.eval_data_path, mod_with_path)
+            cls = os.listdir(eval_mod_path)[0]
+            eval_cls_uids = [
+                n.split(".")[0] for n in os.listdir(os.path.join(eval_mod_path, cls))
+            ]
+            if args.data_csv_path:
+                eval_ids = list(set(eval_cls_uids).intersection(set(data_df.index)))
+            else:
+                eval_ids = eval_cls_uids
+
+    if train_ids is not None and eval_ids is not None:
+        if len(set(train_ids).intersection(set(eval_ids))) != 0:
             raise ValueError(
-                "Cannot use valid_ids without providing a dataframe with the data_csv_path argument"
+                "Train and eval splits have overlapping indices. Please ensure they are disjoint."
             )
-        valid_ids = list(data_df.index)
 
     transform = UnifiedDataTransform(
         transforms_dict=MODALITY_TRANSFORMS,
         image_augmenter=EmptyAugmenter(),
     )
-    dataset_train = MultiModalDatasetFolder(
-        root=args.data_path,
-        modalities=args.all_domains,
-        modality_transforms=MODALITY_TRANSFORMS,
-        modality_info=modality_info,
-        valid_ids=valid_ids,
-        transform=transform,
-        tokenizer=text_tokenizer,
-        max_token_len=max_tok_len,
-        data_df=data_df,
-    )
+    if not args.eval_only:
+        dataset_train = MultiModalDatasetFolder(
+            root=args.data_path,
+            modalities=args.all_domains,
+            modality_transforms=MODALITY_TRANSFORMS,
+            modality_info=modality_info,
+            valid_ids=train_ids,
+            transform=transform,
+            tokenizer=text_tokenizer,
+            max_text_tok_length=max_text_tok_len,
+            data_df=data_df,
+        )
+        print("dataset_train size = %d" % len(dataset_train))
 
-    num_training_steps_per_epoch = len(dataset_train) // (
-        args.batch_size * args.accum_iter * num_tasks
-    )
+        num_training_steps_per_epoch = len(dataset_train) // (
+            args.batch_size * args.accum_iter * num_tasks
+        )
 
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train,
-        num_replicas=num_tasks,
-        rank=sampler_rank,
-        shuffle=True,
-        drop_last=True,
-    )
-    print("Sampler_train = %s" % str(sampler_train))
+        sampler_train = DistributedSampler(
+            dataset_train,
+            num_replicas=num_tasks,
+            rank=sampler_rank,
+            shuffle=True,
+            drop_last=True,
+        )
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train,
-        sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-    )
+        data_loader_train = DataLoader(
+            dataset_train,
+            sampler=sampler_train,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
+        )
+    else:
+        print("Warning: No training data loader provided.")
+        num_training_steps_per_epoch = 0
+        data_loader_train = None
 
     if args.eval_data_path:
         dataset_val = MultiModalDatasetFolder(
@@ -555,12 +620,13 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             modalities=args.all_domains,
             modality_transforms=MODALITY_TRANSFORMS,
             modality_info=modality_info,
-            valid_ids=valid_ids,
+            valid_ids=eval_ids,
             transform=transform,
             tokenizer=text_tokenizer,
-            max_token_length=max_tok_len,
+            max_text_tok_length=max_text_tok_len,
             data_df=data_df,
         )
+        print("dataset_val size = %d" % len(dataset_val))
         if args.dist_eval:
             if len(dataset_val) % num_tasks != 0:
                 print(
@@ -568,13 +634,13 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
                     "This will slightly alter validation results as extra duplicate entries are added to achieve "
                     "equal num of samples per-process."
                 )
-            sampler_val = torch.utils.data.DistributedSampler(
+            sampler_val = DistributedSampler(
                 dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False
             )
         else:
-            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+            sampler_val = SequentialSampler(dataset_val)
 
-        data_loader_val = torch.utils.data.DataLoader(
+        data_loader_val = DataLoader(
             dataset_val,
             sampler=sampler_val,
             batch_size=args.eval_batch_size or args.batch_size,
@@ -589,12 +655,13 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
                 modalities=args.all_domains,
                 modality_transforms=MODALITY_TRANSFORMS,
                 modality_info=modality_info,
-                valid_ids=valid_ids,
+                valid_ids=eval_ids,
                 transform=transform,
                 tokenizer=text_tokenizer,
-                max_token_length=max_tok_len,
-                pre_shuffle=True,
+                max_text_tok_length=max_text_tok_len,
+                data_df=data_df,
                 max_samples=args.num_eval_metrics_samples,
+                pre_shuffle=True,
             )
             if args.dist_eval:
                 if len(dataset_metrics) % num_tasks != 0:
@@ -603,16 +670,16 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
                         "This will slightly alter validation results as extra duplicate entries are added to achieve "
                         "equal num of samples per-process."
                     )
-                sampler_metrics = torch.utils.data.DistributedSampler(
+                sampler_metrics = DistributedSampler(
                     dataset_metrics,
                     num_replicas=num_tasks,
                     rank=global_rank,
                     shuffle=False,
                 )
             else:
-                sampler_metrics = torch.utils.data.SequentialSampler(dataset_metrics)
+                sampler_metrics = SequentialSampler(dataset_metrics)
 
-            data_loader_metrics = torch.utils.data.DataLoader(
+            data_loader_metrics = DataLoader(
                 dataset_metrics,
                 sampler=sampler_metrics,
                 batch_size=args.eval_batch_size or args.batch_size,
@@ -629,17 +696,18 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
                 modalities=args.all_domains,
                 modality_transforms=MODALITY_TRANSFORMS,
                 modality_info=modality_info,
-                valid_ids=valid_ids,
+                valid_ids=eval_ids,
                 transform=transform,
                 tokenizer=text_tokenizer,
-                max_token_length=max_tok_len,
-                pre_shuffle=True,
+                max_text_tok_length=max_text_tok_len,
+                data_df=data_df,
                 max_samples=args.num_logged_images,
+                pre_shuffle=True,
                 return_path=True,  # needed for overlaid images
             )
             # No dist eval, we only run it on the main process
-            sampler_image_log = torch.utils.data.SequentialSampler(dataset_image_log)
-            data_loader_image_log = torch.utils.data.DataLoader(
+            sampler_image_log = SequentialSampler(dataset_image_log)
+            data_loader_image_log = DataLoader(
                 dataset_image_log,
                 sampler=sampler_image_log,
                 batch_size=args.num_logged_images,  # num_logged_images << batch_size
@@ -667,7 +735,7 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
 
 def get_model(args, modality_info):
     """Creates and returns model from arguments"""
-    print(f"Creating model: {args.model} for modalities {list(modality_info.keys())}")
+    print(f"Creating model: {args.model} conditioned on {args.cond_domains}")
 
     encoder_embeddings = {}
     for mod in args.cond_domains:
@@ -837,10 +905,11 @@ def main(args):
             f"Scheduler {args.lr_and_wd_scheduler} not implemented."
         )
 
-    print(
-        "Max WD = %.7f, Min WD = %.7f"
-        % (max(wd_schedule_values), min(wd_schedule_values))
-    )
+    if len(wd_schedule_values) > 0:
+        print(
+            "Max WD = %.7f, Min WD = %.7f"
+            % (max(wd_schedule_values), min(wd_schedule_values))
+        )
 
     # Auto-load from checkpoint (if args say to do so)
     utils.auto_load_model(
@@ -895,11 +964,13 @@ def main(args):
             distance_type=args.distance_type,
             cfg_scale=args.cfg_scale,
             log_writer=log_writer,
-            compute_metrics_on_cpu=not args.distributed,
+            compute_metrics_on_cpu=device.type == "cpu",
         )
         if log_writer is not None:
             log_writer.update(eval_stats)
         exit(0)
+    elif data_loader_train is None:
+        raise ValueError("No training data loader provided but in training mode.")
 
     # Training
     print(f"Start training for {args.epochs} epochs")
@@ -951,22 +1022,18 @@ def main(args):
         launch_evaluate = (
             (data_loader_val is not None)
             and args.eval_freq > 0
-            and (epoch % args.eval_freq == 0)
-            or is_last_epoch
+            and (epoch % args.eval_freq == 0 or is_last_epoch)
         )
         launch_eval_metrics = (
             (data_loader_metrics is not None)
             and args.eval_metrics_freq > 0
-            and ((epoch % args.eval_metrics_freq == 0) or is_last_epoch)
+            and (epoch % args.eval_metrics_freq == 0 or is_last_epoch)
         )
         launch_eval_image_log = (
             (data_loader_image_log is not None)
             and args.eval_image_log_freq > 0
-            and ((epoch % args.eval_image_log_freq == 0) or is_last_epoch)
+            and (epoch % args.eval_image_log_freq == 0 or is_last_epoch)
         )
-        # TODO:
-        # test
-        # update all the docstrings,
         eval_stats = launch_evals(
             launch_eval=launch_evaluate,
             launch_eval_metrics=launch_eval_metrics,
@@ -986,7 +1053,7 @@ def main(args):
             distance_type=args.distance_type,
             cfg_scale=args.cfg_scale,
             log_writer=log_writer,
-            compute_metrics_on_cpu=not args.distributed,
+            compute_metrics_on_cpu=device.type == "cpu",
         )
         log_stats.update(eval_stats)
 
@@ -1056,12 +1123,14 @@ def train_one_epoch(
                         param_group["weight_decay"] = wd_schedule_values[it]
 
         mod_dict = {
-            modality: {k: v.to(device, non_blocking=True) for k, v in d.items()}
-            for modality, d in x.items()
-            if modality in cond_domains
+            mod: to_device(t, device, non_blocking=True)
+            for mod, t in x.items()
+            if mod in cond_domains
         }
 
-        target_distribution = x["target_distribution"].to(device, non_blocking=True)
+        target_distribution = x["target_distribution"].to(
+            device, dtype=torch.float32, non_blocking=True
+        )
 
         # Sample a uniformly random timestep for each image
         timesteps = torch.randint(
@@ -1074,8 +1143,10 @@ def train_one_epoch(
         noise = torch.randn(target_distribution.shape).to(device, non_blocking=True)
 
         # Add noise to the clean images according to the noise magnitude at each timestep
-        noisy_images = unwrap_model(model).noise_scheduler.add_noise(
-            target_distribution, noise, timesteps
+        noisy_images = (
+            unwrap_model(model)
+            .noise_scheduler.add_noise(target_distribution, noise, timesteps)
+            .float()  # was producing float64 noisy images for some reason
         )
 
         # We're implicitly setting the prediction type to "sample" (i.e., x0) here
@@ -1085,11 +1156,9 @@ def train_one_epoch(
         # See https://muellerzr.github.io/blog/gradient_accumulation.html
         with nullcontext() if update_grad else model.no_sync():
 
-            with torch.amp.autocast(
-                "cuda", dtype=dtype, enabled=dtype != torch.float32
-            ):
+            with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
                 logits = model(noisy_images, timesteps, mod_dict)
-                loss = distance_weighted_loss(logits, target, distance_type, loss_type)
+                loss = distance_weighted_loss(logits, target, loss_type, distance_type)
 
             loss_value = loss.item()
 
@@ -1115,6 +1184,10 @@ def train_one_epoch(
                 optimizer.zero_grad()
 
         torch.cuda.synchronize()
+
+        # Effectively not using cache (to fit a batch size of 24)
+        gc.collect()
+        torch.cuda.empty_cache()
 
         metric_logger.update(loss=loss_value)
         min_lr = 1.0
@@ -1146,7 +1219,6 @@ def train_one_epoch(
     # Gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    torch.cuda.empty_cache()
 
     return {
         "[Epoch] " + k: meter.global_avg for k, meter in metric_logger.meters.items()
@@ -1179,31 +1251,25 @@ def launch_evals(
     evaluation of image metrics, and image logging.
 
     Args:
-        launch_evaluate: Whether to launch standard evaluation.
+        launch_eval: Whether to launch standard evaluation.
         launch_eval_metrics: Whether to launch evaluation of image metrics.
         launch_eval_image_log: Whether to launch image logging.
         model: Model to evaluate.
         device: Device to evaluate on.
-        domain: Image domain.
-        codebook_weight: Codebook loss weight.
-        train_res_choices: List of training resolutions to randomly sample from.
-        eval_image_sizes: Set of evaluation resolutions to perform eval on.
+        cond_domains: List of conditioning domains.
         eval_noise_schedule: Noise schedule to use for diffusion.
         num_eval_timesteps: Number of diffusion timesteps to use for evaluation.
-        model_ema: Optional EMA model to evaluate for each of the eval functions.
+        eval_data_root: Root directory of evaluation data.
         dtype: Data type for mixed precision inference.
         data_loader_val: Dataloader for standard evaluation.
         data_loader_metrics: Dataloader for evaluation of image metrics.
         data_loader_image_log: Dataloader for image logging.
         num_logged_images: Number of images to log.
-        prediction_type: Type of diffusion target.
-        loss_fn: Reconstruction loss function identifyer.
-        mask_value: Value to mask out invalid regions with.
-        eval_res_cond: A fixed eval image size to condition the diffusion on.
-          Ignored if None. See SDXL https://arxiv.org/abs/2307.01952 for more details.
-        no_inception: Whether to skip Inception score computation.
+        loss_type: Type of loss to use for evaluation.
+        distance_type: Type of distance weighting to use for the loss function
+        cfg_scale: Classifier-free guidance scale.
         log_writer: Optional wandb logger.
-        log_codebook_usage: Whether to compute and log codebook usage.
+        compute_metrics_on_cpu: Whether to compute torchmetrics on CPU.
 
     Returns:
         Dictionary of all evaluation results.
@@ -1214,9 +1280,9 @@ def launch_evals(
     torch.cuda.empty_cache()
 
     if launch_eval:
-        eval_stats = eval(
+        eval_stats = eval_standard(
             model=model,
-            data_loader_val=data_loader_val,
+            data_loader=data_loader_val,
             device=device,
             cond_domains=cond_domains,
             distance_type=distance_type,
@@ -1269,7 +1335,7 @@ def launch_evals(
 
 
 @torch.no_grad()
-def eval(
+def eval_standard(
     model,
     data_loader,
     device,
@@ -1277,7 +1343,7 @@ def eval(
     loss_type: str = "bce",
     distance_type: str = "euclidean",
     dtype: torch.dtype = torch.float16,
-    header="[Eval] ",
+    header: str = "[Eval] ",
 ):
     # Switch to evaluation mode
     model.eval()
@@ -1287,12 +1353,14 @@ def eval(
 
     for x in metric_logger.log_every(data_loader, print_freq, header=header):
         mod_dict = {
-            modality: {k: v.to(device, non_blocking=True) for k, v in d.items()}
-            for modality, d in x.items()
-            if modality in cond_domains
+            mod: to_device(t, device, non_blocking=True)
+            for mod, t in x.items()
+            if mod in cond_domains
         }
 
-        target_distribution = x["target_distribution"].to(device, non_blocking=True)
+        target_distribution = x["target_distribution"].to(
+            device, dtype=torch.float32, non_blocking=True
+        )
 
         # Sample a uniformly random timestep for each image
         timesteps = torch.randint(
@@ -1305,16 +1373,18 @@ def eval(
         noise = torch.randn(target_distribution.shape).to(device, non_blocking=True)
 
         # Add noise to the clean images according to the noise magnitude at each timestep
-        noisy_images = unwrap_model(model).noise_scheduler.add_noise(
-            target_distribution, noise, timesteps
+        noisy_images = (
+            unwrap_model(model)
+            .noise_scheduler.add_noise(target_distribution, noise, timesteps)
+            .float()  # was producing float64 noisy images for some reason
         )
 
         # We're implicitly setting the prediction type to "sample" (i.e., x0) here
         target = target_distribution  # could try predicting the noise or velocity later
 
-        with torch.amp.autocast("cuda", dtype=dtype, enabled=dtype != torch.float32):
+        with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
             logits = model(noisy_images, timesteps, mod_dict)
-            loss = distance_weighted_loss(logits, target, distance_type, loss_type)
+            loss = distance_weighted_loss(logits, target, loss_type, distance_type)
 
         loss_value = loss.item()
         metric_logger.update(loss=loss_value)
@@ -1347,19 +1417,13 @@ def eval_metrics(
         model: Model to evaluate.
         data_loader: Validation set data loader.
         device: Device to evaluate on.
-        domain: Image domain.
-        eval_size: Resolution to evaluate at.
+        cond_domains: List of conditioning domains.
         noise_schedule: Noise schedule to use for diffusion.
         num_diffusion_steps: Number of diffusion steps to use for eval.
+        cfg_scale: Classifier-free guidance scale.
         dtype: Data type for mixed precision inference.
-        mask_value: Value to mask out invalid regions with.
-        eval_res_cond: A fixed eval image size to condition the diffusion on.
-          Ignored if None. See SDXL https://arxiv.org/abs/2307.01952 for more details.
-        no_inception: Whether to skip Inception score computation.
-        compute_on_cpu: Whether to compute torchmetrics on CPU.
         header: The prefix (but includes a space after), for wandb logging.
-        log_writer: Optional wandb logger.
-        log_codebook_usage: Whether to compute and log codebook usage.
+        compute_on_cpu: Whether to compute torchmetrics on CPU.
 
     Returns:
         Dictionary of image metrics evaluation results.
@@ -1392,23 +1456,24 @@ def eval_metrics(
         data_loader, print_freq=10, header=f"{header}Image metrics:"
     ):
         mod_dict = {
-            modality: {k: v.to(device, non_blocking=True) for k, v in d.items()}
-            for modality, d in x.items()
-            if modality in cond_domains
+            mod: to_device(t, device, non_blocking=True)
+            for mod, t in x.items()
+            if mod in cond_domains
         }
 
         # Autoencode the images
-        with torch.amp.autocast(
-            device_type="cuda", dtype=dtype, enabled=dtype != torch.float32
-        ):
+        with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
             logits = unwrap_model(model).generate(
                 cond_mod_dict=mod_dict,
                 scheduler=noise_schedule,
                 timesteps=num_diffusion_steps,
                 cfg_scale=cfg_scale,
+                image_size=tuple(x["target_distribution"].shape[-2:]),
             )
 
-        target_distribution = x["target_distribution"].to(device, non_blocking=True)
+        target_distribution = x["target_distribution"].to(
+            device, dtype=torch.float32, non_blocking=True
+        )
 
         gt = target_distribution
         pred = spatial_softmax(logits)
@@ -1421,7 +1486,6 @@ def eval_metrics(
 
     # Compute and log metrics
     results = {}
-    header = f"{header}"
 
     results[header + "MSE"] = mse_metric.compute().item()
     results[header + "MAE"] = mae_metric.compute().item()
@@ -1465,17 +1529,15 @@ def eval_image_log(
         model: Model to evaluate.
         data_loader: Validation set data loader.
         device: Device to evaluate on.
-        domain: Image domain.
-        eval_size: Resolution to evaluate at.
+        cond_domains: List of conditioning domains.
         noise_schedule: Noise schedule to use for diffusion.
         num_diffusion_steps: Number of diffusion steps to use for eval.
+        eval_data_root: Root directory of evaluation data.
         dtype: Data type for mixed precision inference.
         num_logged_images: Number of images to log.
-        mask_value: Value to mask out invalid regions with.
-        eval_res_cond: A fixed eval image size to condition the diffusion on.
-          Ignored if None. See SDXL https://arxiv.org/abs/2307.01952 for more details.
+        cfg_scale: Classifier-free guidance scale.
         log_writer: Wandb logger.
-        prefix: Prefix for wandb logging.
+        header: Prefix for wandb logging.
     """
 
     if log_writer is None:
@@ -1488,20 +1550,19 @@ def eval_image_log(
         imgs = []
         for x in data_loader:
             mod_dict = {
-                modality: {k: v.to(device, non_blocking=True) for k, v in d.items()}
-                for modality, d in x.items()
-                if modality in cond_domains
+                mod: to_device(t, device, non_blocking=True)
+                for mod, t in x.items()
+                if mod in cond_domains
             }
 
             # Autoencode the images
-            with torch.amp.autocast(
-                device_type="cuda", dtype=dtype, enabled=dtype != torch.float32
-            ):
+            with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
                 logits = unwrap_model(model).generate(
                     mod_dict,
                     scheduler=noise_schedule,
                     timesteps=num_diffusion_steps,
                     cfg_scale=cfg_scale,
+                    image_size=tuple(x["target_distribution"].shape[-2:]),
                 )
 
             target_distribution = x["target_distribution"].to(device, non_blocking=True)
@@ -1516,6 +1577,9 @@ def eval_image_log(
                 rgb_img_path = os.path.join(
                     eval_data_root, "rgb", class_id, file_name + ".tif"
                 )
+                if not os.path.exists(rgb_img_path):
+                    print(f"Image {rgb_img_path} not found, skipping")
+                    continue
                 imgs.append(create_overlaid_img(target_dist, pred_dist, rgb_img_path))
 
         # Log example images to wandb
@@ -1529,10 +1593,9 @@ def eval_image_log(
 
 
 def spatial_softmax(x):
-    H, W = x.shape[-2:]
-    x = rearrange(x, "... c h w -> ... c (h w)")
-    x = F.softmax(x, dim=-1)
-    return rearrange(x, "... c (h w) -> ... c h w", h=H, w=W)
+    # Flatten spatial dims then apply softmax then reshape back
+    x = F.softmax(x.contiguous().flatten(-2), dim=-1).view_as(x)
+    return x
 
 
 def distance_weighted_loss(
@@ -1564,8 +1627,8 @@ def distance_weighted_loss(
         j = repeat(torch.arange(W), "w -> 1 1 h w", h=H)
 
         # Index positions of the single non-zero value in the target distribution
-        a = np.argmax(target, axis=-2).max().item()
-        b = np.argmax(target, axis=-1).max().item()
+        a = target.argmax(dim=-2).max().item()
+        b = target.argmax(dim=-1).max().item()
 
         if distance_type == "euclidean":
             dists = torch.sqrt((i - a) ** 2 + (j - b) ** 2)  # (1, 1, H, W)
@@ -1624,14 +1687,13 @@ def create_overlaid_img(
     Args:
         target_dist: The target distribution. Shape (1, H, W)
         pred_dist: The predicted distribution. Shape (1, H, W)
-        original_img_path: Path to the original image.
+        rgb_img_path: Path to the rgb original image.
     """
-    pred_alpha_mask = (
-        255 * rearrange(pred_dist, "1 h w -> h w 1").float().cpu().numpy()
-    ).astype(np.uint8)
+    pred_alpha_mask = (255 * pred_dist.permute(1, 2, 0).float().cpu().numpy()).astype(
+        np.uint8
+    )
 
     H, W = target_dist.shape[-2:]
-
     # Byte array that corresponds to a yellow image
     yellow = np.concatenate(
         [255 * np.ones((H, W, 2)), np.zeros((H, W, 1))], axis=-1
@@ -1647,8 +1709,8 @@ def create_overlaid_img(
     ).astype(np.uint8)
 
     # (i, j) of the single non-zero value in the target distribution
-    i = np.argmax(target_dist, axis=-2).max().item()
-    j = np.argmax(target_dist, axis=-1).max().item()
+    i = target_dist.argmax(dim=-2).max().item()
+    j = target_dist.argmax(dim=-1).max().item()
 
     margin = 1  # Pixel margin for black square
     lower_i = i - (margin if i - margin >= 0 else 0)
@@ -1671,11 +1733,28 @@ def create_overlaid_img(
     return im
 
 
+def to_device(
+    data: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+    device: Union[torch.device, str] = None,
+    dtype: torch.dtype = None,
+    non_blocking: bool = True,
+):
+    """
+    Move a tensor or a tuple of tensors to a device. Is used to handle the case when
+    a modality includes an attention mask (e.g., captions)
+    """
+    # NOTE: for some reason the data loader returns the tuple as a list so we
+    # check for not tensor instead and fix it
+    if not isinstance(data, torch.Tensor):
+        return (
+            data[0].to(device, dtype, non_blocking),
+            data[1].to(device, dtype, non_blocking),
+        )
+    return data.to(device, dtype, non_blocking)
+
+
 if __name__ == "__main__":
     args = get_args()
-
-    # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    # resource.setrlimit(resource.RLIMIT_NOFILE, (args.rlimit, rlimit[1]))
 
     utils.setup_run_name(args)
 

@@ -166,7 +166,7 @@ class MultiModalDatasetFolder(VisionDataset):
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
         tokenizer: Optional[Tokenizer] = None,
-        max_token_length: Optional[int] = None,
+        max_text_tok_length: Optional[int] = None,
         data_df: Optional[pd.DataFrame] = None,
         is_valid_file: Optional[Callable[[str], bool]] = None,
         max_samples: Optional[int] = None,
@@ -175,7 +175,7 @@ class MultiModalDatasetFolder(VisionDataset):
     ) -> None:
         super().__init__(root, transform=transform, target_transform=target_transform)
 
-        # Masks masks aren't loaded, so we remove them from the modalities
+        # Masks aren't loaded as a modality, so we remove them from the modalities
         self.needs_mask = "mask_valid" in modalities
         self.modalities = [mod for mod in modalities if mod != "mask_valid"]
 
@@ -200,15 +200,22 @@ class MultiModalDatasetFolder(VisionDataset):
 
         for transform in self.modality_transforms.values():
             if hasattr(transform, "set_tokenizer"):
-                if tokenizer is None or max_token_length is None:
+                if tokenizer is None or max_text_tok_length is None:
                     raise ValueError(
-                        "tokenizer and max_token_length must be provided if a modality is text tokenized."
+                        "tokenizer and max_token_length must be provided if a modality is text-tokenized."
                     )
-                transform.set_tokenizer(tokenizer, max_token_length)
+                transform.set_tokenizer(tokenizer, max_text_tok_length)
 
-        classes, class_to_idx = self._find_classes(
-            os.path.join(self.root, list(self.modality_paths.values())[0])
-        )
+        not_none_path = None  # find any modality with path not None
+        for path in self.modality_paths.values():
+            if path is not None:
+                not_none_path = path
+                break
+
+        if not_none_path:
+            _, class_to_idx = self._find_classes(os.path.join(root, not_none_path))
+        # else: there are no paths at all, (i.e., we're only using dataframe data) and there are no classes
+
         extensions = UNIFIED_EXTENSIONS if is_valid_file is None else None
 
         if valid_ids is not None:
@@ -225,7 +232,7 @@ class MultiModalDatasetFolder(VisionDataset):
                     is_valid_file,
                 )
                 if self.modality_paths[mod] is not None  # mod comes from dataframe
-                # Every modality from the dataframe has one class, class index 0
+                # Every modality from the dataframe has no class
                 else [
                     (uid, 0)  # use uid instead of a path
                     for uid in data_df.index
@@ -245,8 +252,6 @@ class MultiModalDatasetFolder(VisionDataset):
                 raise RuntimeError(msg)
 
         self.extensions = extensions
-        self.classes = classes
-        self.class_to_idx = class_to_idx
         self.samples = samples
 
         # Select random subset of dataset if so specified
@@ -298,13 +303,14 @@ class MultiModalDatasetFolder(VisionDataset):
         """
         sample_dict = {}
         missing_data_mods = []
-        path = None  # for return_path in case path isn't set
+        has_path = False  # to keep track of whether any modality has a path
         for mod in self.modalities:
             if self.modality_paths[mod] is None:
                 uid, _ = self.samples[mod][index]
                 data = self.data_df.loc[uid]
                 sample = self.modality_transforms[get_modality_prefix(mod)].load(data)
             else:
+                has_path = True
                 path, _ = self.samples[mod][index]
                 sample = self.modality_transforms[get_modality_prefix(mod)].load(path)
 
@@ -314,14 +320,20 @@ class MultiModalDatasetFolder(VisionDataset):
                 missing_data_mods.append(mod)
 
         if self.transform is not None:
-            # Applies the UnifiedDataTransform which augments the data (as well as pre and post processes it)
+            # Applies the UnifiedDataTransform which augments the data (as well as pre and
+            # post processes it)
             sample_dict = self.transform(sample_dict)
 
-        if self.return_path and path is not None:
-            class_id, file_name = self.get_class_and_file(path)
-            sample_dict["class_id"] = class_id
-            sample_dict["file_name"] = file_name
+        if self.return_path:
+            if not has_path:  # mods from dataframe only
+                sample_dict["class_id"] = ""
+                sample_dict["file_name"] = uid
+            else:
+                class_id, file_name = self.get_class_and_file(path)
+                sample_dict["class_id"] = class_id
+                sample_dict["file_name"] = file_name
 
+        # If any modalities require a mask, compute it (pretty much just rgb and depth)
         if len(missing_data_mods) > 0:
             if not self.needs_mask:
                 raise ValueError(

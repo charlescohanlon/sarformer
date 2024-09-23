@@ -2,6 +2,7 @@ import math
 from functools import partial
 from typing import Any, Dict, Optional, Tuple, Union
 
+from numpy import isin
 import torch
 from einops import repeat
 from torch import nn
@@ -15,9 +16,6 @@ from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from .fm_utils import EncoderBlock, LayerNorm
 from fourm.models.unet import PatchedConvNeXtUNet
 from fourm.data.modality_info import MODALITY_INFO
-
-# Model definitions
-__all__ = ["fm_b_12e_patched_convnext_unet_b_swiglu_qknorm_nobias"]
 
 
 class SARFormer(nn.Module):
@@ -84,6 +82,7 @@ class SARFormer(nn.Module):
         norm_layer: Union[partial, nn.Module] = partial(LayerNorm, eps=1e-6),
         gated_mlp: bool = False,  # Make the feedforward gated for e.g. SwiGLU
         qk_norm: bool = False,
+        allow_zero_attn: bool = False,
         scheduler_type: str = "ddpm",
         num_train_timesteps: int = 1000,
         thresholding: bool = False,
@@ -122,6 +121,7 @@ class SARFormer(nn.Module):
                     norm_layer=norm_layer,
                     gated_mlp=gated_mlp,
                     qk_norm=qk_norm,
+                    allow_zero_attn=allow_zero_attn,
                 )
                 for i in range(encoder_depth)
             ]
@@ -216,17 +216,16 @@ class SARFormer(nn.Module):
         return self.get_num_layers_encoder() + self.get_num_layers_backbone()
 
     def get_num_encoder_params(self):
-        return sum(p.numel() for p in self.encoder.parameters())
+        return sum(p.numel() for p in self.encoder.parameters() if p.requires_grad)
 
     def get_num_backbone_params(self):
-        return sum(p.numel() for p in self.backbone.parameters())
+        return sum(p.numel() for p in self.backbone.parameters() if p.requires_grad)
 
     def get_num_params(self):
         return self.get_num_encoder_params() + self.get_num_backbone_params()
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        # TODO: which modules should be excluded from weight decay?
         no_wd_set = set()
 
         for mod, emb_module in self.encoder_embeddings.items():
@@ -254,14 +253,14 @@ class SARFormer(nn.Module):
         )
 
     def cat_encoder_tensors(
-        self, mod_dict: Dict[str, torch.Tensor]
+        self,
+        mod_dict: Dict[str, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]],
     ) -> Tuple[torch.Tensor]:
         """Concatenate encoder tensors from different modalities.
 
         Args:
-            mod_dict (dict): A dictionary containing information for each modality.
-                             Expected keys for each modality are 'x' (input tokens)
-                             and 'emb' (embeddings)
+            mod_dict (dict): A dictionary containing tensors for each modality. Specifically, the
+                tensor input x, the tensor embeddings emb, and the tensor mask.
 
         Returns:
             tuple:
@@ -274,16 +273,16 @@ class SARFormer(nn.Module):
         emb_all = []
         encoder_mask_all = []
 
-        for d in mod_dict.values():
-            if isinstance(d["x"], tuple):
-                x, mask = d["x"]
-                encoder_tokens_all.append(x)
-                encoder_mask_all.append(mask.to(torch.bool, non_blocking=True))
+        for x, x_emb, mask in mod_dict.values():
+            encoder_tokens_all.append(x)
+            emb_all.append(x_emb)
+            if mask is not None:
+                # attend to non-padding tokens
+                encoder_mask_all.append(mask)
             else:
-                encoder_tokens_all.append(d["x"])
-                encoder_mask_all.append(torch.ones_like(d["x"], dtype=torch.bool))
-
-            emb_all.append(d["emb"])
+                B, N, _ = x.shape
+                # attend to all
+                encoder_mask_all.append(torch.ones(B, N, device=x.device))
 
         encoder_tokens_all = torch.cat(encoder_tokens_all, dim=1)
         emb_all = torch.cat(emb_all, dim=1)
@@ -292,51 +291,55 @@ class SARFormer(nn.Module):
         return encoder_tokens_all, emb_all, encoder_mask_all
 
     def prep_encoder_tokens(
-        self, mod_dict: Dict[str, Dict[str, torch.Tensor]]
+        self, mod_dict: Dict[str, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
     ) -> Tuple[torch.Tensor]:
         """Prepare encoder tokens for the forward pass by concatenating and shuffling them.
 
         Args:
-            mod_dict (dict): Dictionary containing tensors for different modalities.
-                            It is expected to have keys for each modality and values
-                            containing the modalities' associated tensors.
+            mod_dict (dict): A dictionary containing tensors for each modality. Specifically, the
+                tensor input x, the tensor embeddings emb, and the tensor mask.
 
         Returns:
             tuple:
                 - encoder_tokens (torch.Tensor): The encoder tokens. Shape (B, N, D)
                 - encoder_emb (torch.Tensor): The encoder embeddings. Shape (B, N, D)
-                - encoder_mask (torch.Tensor): Mainly to mask the [PAD] tokens in the encoder. Shape (B, N)
+                - encoder_mask (torch.Tensor): Mainly to mask the [PAD] tokens in the encoder. Shape (B, N, 1)
 
         """
-        encoder_tokens_all, emb_all, encoder_mask_all = self.cat_encoder_tensors(
-            mod_dict
-        )
+        encoder_tokens, encoder_emb, encoder_mask = self.cat_encoder_tensors(mod_dict)
 
-        # shuffle the encoder tokens
-        B, N, _ = encoder_tokens_all.shape
-        ids_shuffle = torch.randint(N, size=(B, N)).argsort(dim=1)
+        # NOTE: skip this for now
+        # # shuffle the encoder tokens
+        # B, N, _ = encoder_tokens.shape
+        # ids_shuffle = torch.randint(N, size=(B, N)).argsort(dim=1)
 
-        # collect tokens in the order of ids_keep (this is supposedly faster than tensor indexing)
-        encoder_tokens = torch.gather(
-            encoder_tokens_all,
-            dim=1,
-            index=repeat(ids_shuffle, "b n -> b n d", d=encoder_tokens_all.shape[2]),
-        )
-        encoder_emb = torch.gather(
-            emb_all,
-            dim=1,
-            index=repeat(ids_shuffle, "b n -> b n d", d=emb_all.shape[2]),
-        )
-        encoder_mask = torch.gather(
-            encoder_mask_all,
-            dim=1,
-            index=ids_shuffle,
-        )
+        # # collect tokens in the order of ids_keep (this is supposedly faster than tensor indexing)
+        # encoder_tokens = torch.gather(
+        #     encoder_tokens,
+        #     dim=1,
+        #     index=repeat(ids_shuffle, "b n -> b n d", d=encoder_tokens.shape[2]),
+        # )
+        # encoder_emb = torch.gather(
+        #     encoder_emb,
+        #     dim=1,
+        #     index=repeat(ids_shuffle, "b n -> b n d", d=encoder_emb.shape[2]),
+        # )
+        # encoder_mask = torch.gather(
+        #     encoder_mask,
+        #     dim=1,
+        #     index=ids_shuffle,
+        # )
+
+        # attn block expects 1 to mask 0 to attend and shape (B, N, 1)
+        encoder_mask = (~encoder_mask.bool()).unsqueeze(-1)
 
         return encoder_tokens, encoder_emb, encoder_mask
 
     def forward_encoder(
-        self, cond_mod_dict: Union[Dict[str, Dict[str, torch.Tensor]]]
+        self,
+        cond_mod_dict: Dict[
+            str, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
+        ],
     ) -> torch.Tensor:
         """Forward pass for the encoder from the mod_dict.
 
@@ -349,7 +352,7 @@ class SARFormer(nn.Module):
             torch.Tensor: Encoder output. Shape (B, N, D)
         """
         encoder_mod_dict = {
-            mod: self.encoder_embeddings[mod](d) for mod, d in cond_mod_dict.items()
+            mod: self.encoder_embeddings[mod](x) for mod, x in cond_mod_dict.items()
         }
         encoder_tokens, encoder_emb, encoder_mask = self.prep_encoder_tokens(
             encoder_mod_dict
@@ -368,7 +371,10 @@ class SARFormer(nn.Module):
         self,
         noisy_image: torch.Tensor,
         timesteps: torch.Tensor,
-        cond: Union[Dict[str, Dict[str, torch.Tensor]], torch.Tensor],
+        cond: Union[
+            Dict[str, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]],
+            torch.Tensor,
+        ],
         unconditional: bool = False,
         **kwargs,  # to absorb additional arguments from PipelineCond
     ) -> torch.Tensor:
@@ -377,19 +383,18 @@ class SARFormer(nn.Module):
         Args:
             noisy_image (torch.Tensor): Noisy image tensor. Shape (B, C, H, W)
             timesteps (torch.Tensor): Timestep tensor. Shape (B)
-            cond_mod_dict (dict): Dictionary containing tensors for the different conditioning
-                modalities. It is expected to have keys for each modality and values containing
-                the modalities' associated tensors.
-            unconditional (bool): If True, the model is run in unconditionally.
+            cond (dict): If tensor it's the already-encoded input. Otherwise it's a
+                dictionary containing tensors for the different conditioning modalities.
+                It is expected to have keys for each and values containing the modalities'
+                associated tensors.
+            unconditional (bool): If True, the model is run unconditionally. (Not implemented)
 
         Returns:
             torch.Tensor: The scalar field logits. Shape (B, 1, H, W)
 
         """
-        if isinstance(cond, dict):
-            context = self.forward_encoder(cond)
-        else:
-            context = cond
+        # Conditioning Encoder
+        context = self.forward_encoder(cond) if isinstance(cond, dict) else cond
 
         # Diffusion Backbone
         x = self.backbone(noisy_image, timesteps, context)
@@ -440,13 +445,12 @@ class SARFormer(nn.Module):
 
 
 @register_model
-def sarformer_t_swiglu_qknorm_nobias(
+def sarformer_t_swiglu_qknorm(
     encoder_embeddings: Dict[str, nn.Module],
     **kwargs,
 ):
     model = SARFormer(
         encoder_embeddings=encoder_embeddings,
-        modality_info=MODALITY_INFO,
         dim=768,
         encoder_depth=3,
         num_heads_encoder=8,
@@ -458,6 +462,7 @@ def sarformer_t_swiglu_qknorm_nobias(
         mlp_ratio_encoder=4.0,
         mlp_ratio_backbone=4.0,
         norm_layer=partial(LayerNorm, eps=1e-6, bias=False),
+        allow_zero_attn=True,  # see https://www.evanmiller.org/attention-is-off-by-one.html
         act_layer=nn.SiLU,
         gated_mlp=True,
         qk_norm=True,

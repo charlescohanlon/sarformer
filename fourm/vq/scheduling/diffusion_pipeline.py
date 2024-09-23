@@ -61,7 +61,7 @@ class PipelineCond(DiffusionPipeline):
         timesteps: Optional[int] = None,
         guidance_scale: float = 0.0,
         guidance_rescale: float = 0.0,
-        image_size: Optional[Union[Tuple[int, int], int]] = None,
+        image_size: Union[Tuple[int, int], int] = None,
         verbose: bool = True,
         scheduler_timesteps_mode: str = "trailing",
         orig_res: Optional[Union[torch.LongTensor, Tuple[int, int]]] = None,
@@ -94,16 +94,16 @@ class PipelineCond(DiffusionPipeline):
             if timesteps is None
             else timesteps
         )
-        batch_size, _, _, _ = cond.shape
+        batch_size = cond.shape[0]
 
         # Sample gaussian noise to begin loop
-        image_size = self.model.sample_size if image_size is None else image_size
         image_size = to_2tuple(image_size)
         image = torch.randn(
-            (batch_size, self.model.in_channels, image_size[0], image_size[1]),
+            # Channels are 1 for scalar field output
+            (batch_size, 1, image_size[0], image_size[1]),
             generator=generator,
+            device=cond.device,
         )
-        image = image.to(self.model.device)
 
         do_cfg = callable(guidance_scale) or guidance_scale > 1.0
 
@@ -121,7 +121,7 @@ class PipelineCond(DiffusionPipeline):
                 # TODO: is there a better way to get unconditional output?
                 model_output_uncond = self.model(
                     image, t, cond, unconditional=True, **kwargs
-                )  
+                )
 
                 if callable(guidance_scale):
                     guidance_scale_value = guidance_scale(

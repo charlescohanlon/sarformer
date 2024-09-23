@@ -135,7 +135,21 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob, self.training)
 
 
-class ConvNeXtBlock(TimestepBlock):
+class GRN(nn.Module):
+    """GRN (Global Response Normalization) layer"""
+
+    def __init__(self, dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
+        self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
+
+    def forward(self, x):
+        Gx = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
+        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (x * Nx) + self.beta + x
+
+
+class ConvNeXtV2Block(TimestepBlock):
     """
     ConvNeXt Block. There are two equivalent implementations:
     Modified from https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py
@@ -145,7 +159,6 @@ class ConvNeXtBlock(TimestepBlock):
         time_embed_dim (int): Size of timestep embedding dimension.
         output_dim (int): Number of output channels. Default: None (which results in same as dim).
         drop_path (float): Stochastic depth rate. Default: 0.0
-        layer_scale_init_value (float): Init value for Layer Scale. Default: 1e-6.
         mlp_ratio (int): Ratio of effective mlp hidden dim to embedding dim. Default: 4.
         act_layer (nn.Module): Activation layer. Default: nn.GELU.
     """
@@ -156,7 +169,6 @@ class ConvNeXtBlock(TimestepBlock):
         time_embed_dim,
         output_dim=None,
         drop_path=0.0,
-        layer_scale_init_value=1e-6,
         mlp_ratio=4.0,
         act_layer=nn.GELU,
     ):
@@ -167,25 +179,17 @@ class ConvNeXtBlock(TimestepBlock):
         self.skip_proj = (
             nn.Linear(dim, output_dim) if dim != output_dim else nn.Identity()
         )
-
         # depthwise conv
         self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)
-
         self.norm = nn.LayerNorm(dim, eps=1e-6)
 
         # pointwise/1x1 convs, implemented with linear layers
         hidden_dim = int(mlp_ratio * dim)
         self.pwconv1 = nn.Linear(dim, hidden_dim)
         self.act = act_layer()
+        self.grn = GRN(dim=hidden_dim)
         self.pwconv2 = nn.Linear(hidden_dim, output_dim)
 
-        self.gamma = (
-            nn.Parameter(
-                layer_scale_init_value * torch.ones((output_dim)), requires_grad=True
-            )
-            if layer_scale_init_value > 0
-            else None
-        )
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
     def forward(self, x, emb):
@@ -198,9 +202,8 @@ class ConvNeXtBlock(TimestepBlock):
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)
+        x = self.grn(x)
         x = self.pwconv2(x)
-        if self.gamma is not None:
-            x = self.gamma * x
         x = rearrange(x, "b h w c -> b c h w")
 
         x = self.drop_path(x) + rearrange(h, "b h w c -> b c h w")
@@ -322,7 +325,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 [
                     *[
                         # isotropic
-                        ConvNeXtBlock(
+                        ConvNeXtV2Block(
                             dim=level_chans,
                             time_embed_dim=time_embed_dim,
                             drop_path=dp_rates[dp_index + i],
@@ -332,7 +335,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                         for i in range(num_conv_blocks - 1)
                     ],
                     # increase embedding dims
-                    ConvNeXtBlock(
+                    ConvNeXtV2Block(
                         dim=level_chans,
                         time_embed_dim=time_embed_dim,
                         output_dim=next_level_chans,
@@ -360,7 +363,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             Downsample(scale_factor=channel_mult[-2] / channel_mult[-1]),
             *[
                 # isotropic
-                ConvNeXtBlock(
+                ConvNeXtV2Block(
                     dim=next_level_chans,
                     time_embed_dim=time_embed_dim,
                     drop_path=dp_rates[dp_index + i],
@@ -370,7 +373,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 for i in range(num_conv_blocks - 1)
             ],
             # increase embedding dims
-            ConvNeXtBlock(
+            ConvNeXtV2Block(
                 dim=next_level_chans,
                 time_embed_dim=time_embed_dim,
                 output_dim=last_level_chans,
@@ -388,7 +391,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             ),
             *[
                 # isotropic
-                ConvNeXtBlock(
+                ConvNeXtV2Block(
                     dim=last_level_chans,
                     time_embed_dim=time_embed_dim,
                     drop_path=dp_rates[dp_index + num_conv_blocks + i],
@@ -398,7 +401,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 for i in range(num_conv_blocks - 1)
             ],
             # decrease embedding dims
-            ConvNeXtBlock(
+            ConvNeXtV2Block(
                 dim=last_level_chans,
                 time_embed_dim=time_embed_dim,
                 output_dim=next_level_chans,
@@ -418,7 +421,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             prev_level_chans = model_channels * prev_level
             level_chans = model_channels * level
             layers = [
-                ConvNeXtBlock(
+                ConvNeXtV2Block(
                     dim=prev_level_chans + down_chans.pop(),
                     time_embed_dim=time_embed_dim,
                     # if only one conv block (so this is the last) reduce chans
@@ -430,7 +433,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     act_layer=act_layer,
                 ),
                 *[
-                    ConvNeXtBlock(
+                    ConvNeXtV2Block(
                         dim=prev_level_chans,
                         time_embed_dim=time_embed_dim,
                         # reduces chans if the last conv block, otherwise isotropic
@@ -475,7 +478,8 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         hs = []  # Hidden states for skip connections
 
-        x = self.in_proj(rearrange(x, "b c h w -> b h w c"))
+        x = rearrange(x, "b c h w -> b h w c")
+        x = self.in_proj(x)
         x = self.norm(x)
         x = rearrange(x, "b h w c -> b c h w")
 
@@ -489,16 +493,18 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             x = torch.cat([x, hs.pop()], dim=1)
             x = blk(x, emb, cond)
 
-        x = self.norm(rearrange(x, "b c h w -> b h w c"))
+        x = rearrange(x, "b c h w -> b h w c")
+        x = self.norm(x)
         x = self.out_proj(x)
-        return rearrange(x, "b h w c -> b c h w")
+        x = rearrange(x, "b h w c -> b c h w")
+        return x
 
     def __len__(self):
         return sum(
             [
                 1
                 for m in self.modules()
-                if isinstance(m, ConvNeXtBlock) or isinstance(m, CrossAttentionBlock)
+                if isinstance(m, ConvNeXtV2Block) or isinstance(m, CrossAttentionBlock)
             ]
         )
 
@@ -558,7 +564,7 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
             nw=N_W,
         )
 
-        x = super().forward(x, timesteps, cond=cond)
+        x = super().forward(x, timesteps, cond)
 
         # Depatchify output from B (C * P_H * P_W) N_H N_W -> B C H W
         x = rearrange(
