@@ -508,7 +508,10 @@ class CaptionTransform(TextTokenizedTransform):
         # 3. randomly select a sentence filler from feature meanings for each key in data series
         # 4. fill each sentence with corresponding value from data series
         # 5. concatenate all sentences into one string and return it
-        sentence_templates = all_sentence_templates[uid]
+
+        dataset = uid.replace('Unlabeled','').replace('Labeled','') # TODO check if right
+
+        sentence_templates = all_sentence_templates[dataset]
         sentences = []
 
         for col in data.index:

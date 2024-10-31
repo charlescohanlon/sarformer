@@ -5,11 +5,11 @@ from Augmented_Text_Dicts import *
 
 print(os.getcwd())
 
-all_sentence_templates = {}
+all_sentence_templates = {} # keys are the prefix of the dataset: ie 'AZ', 'MRA'
+
 data_path = 'fourm\data\Augmented_Text_Dicts'
 
 for filename in os.listdir(data_path):
-
 
     if filename.endswith(".py") and filename != "__init__.py":
         
@@ -20,7 +20,7 @@ for filename in os.listdir(data_path):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        key = modulename # TODO change later based on what the uids look like
+        key = modulename.split('_')[0]
 
         all_sentence_templates[key] = getattr(module, modulename)
 
