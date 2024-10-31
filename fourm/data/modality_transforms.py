@@ -18,7 +18,6 @@ from abc import ABC, abstractmethod
 
 from PIL import Image
 from math import radians, sin, cos
-import struct
 
 from scipy.stats import iqr
 import numpy as np
@@ -31,10 +30,6 @@ import pandas as pd
 from fourm.data.image_augmenter import AbstractImageAugmenter
 from fourm.utils import to_2tuple
 from fourm.utils.data_constants import (
-    IMAGENET_DEFAULT_MEAN,
-    IMAGENET_DEFAULT_STD,
-    IMAGENET_INCEPTION_MEAN,
-    IMAGENET_INCEPTION_STD,
     NAIP_MEAN,
     NAIP_STD,
 )
@@ -96,26 +91,25 @@ class UnifiedDataTransform(object):
             image_augmenter (AbstractImageAugmenter): Image augmenter
             resample_mode (str, optional): Resampling mode for PIL images (default: None -> uses default resampling mode for data type)
                 One out of ["bilinear", "bicubic", "nearest", None].
-            add_sizes (bool, optional): Whether to add crop coordinates and original size to the output dict
         """
 
         self.transforms_dict = transforms_dict
         self.image_augmenter = image_augmenter
         self.resample_mode = resample_mode
 
-    def unified_image_augment(self, mod_dict, crop_settings):
+    def unified_image_augment(self, mod_dict, uid=None):
         """Apply the image augmenter to all modalities where it is applicable
 
         Args:
             mod_dict (dict): Dict of modalities
-            crop_settings (dict): Crop settings
+            uid (str, optional): Unique identifier for the image augmentation
 
         Returns:
             dict: Transformed dict of modalities
         """
 
         crop_coords, flip, orig_size, target_size, rand_aug_idx, rotation_angle = (
-            self.image_augmenter(mod_dict, crop_settings)
+            self.image_augmenter(uid)
         )
 
         mod_dict = {
@@ -134,23 +128,22 @@ class UnifiedDataTransform(object):
 
         return mod_dict
 
-    def __call__(self, mod_dict):
+    def __call__(self, mod_dict, uid=None):
         """Apply the augmentation to a dict of modalities (both image based and sequence based modalities)
 
         Args:
             mod_dict (dict): Dict of modalities
+            uid (str, optional): Unique identifier for the image augmentation
 
         Returns:
             dict: Transformed dict of modalities
         """
-        crop_settings = mod_dict.pop("crop_settings", None)
-
         mod_dict = {
             k: get_transform(k, self.transforms_dict).preprocess(v)
             for k, v in mod_dict.items()
         }
 
-        mod_dict = self.unified_image_augment(mod_dict, crop_settings)
+        mod_dict = self.unified_image_augment(mod_dict, uid)
 
         mod_dict = {
             k: get_transform(k, self.transforms_dict).postprocess(v)
@@ -199,6 +192,10 @@ class TextTokenizedTransform(AbstractTransform):
     def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
         pass
 
+    @abstractmethod
+    def load(self, data: pd.Series, uid: str):
+        pass
+
 
 class ImageTransform(AbstractTransform):
 
@@ -211,34 +208,31 @@ class ImageTransform(AbstractTransform):
         return img
 
     @staticmethod
-    def image_hflip(img: Image, flip: bool):
-        """Crop and resize an image
+    def image_flip(img: Image, flip: bool):
+        """Horizontally flip an image
 
         :param img: Image to crop and resize
         :param flip: Whether to flip the image
         :return: Flipped image (if flip = True)
         """
-        if flip:
+        hflip, vflip = flip
+        if hflip:
             img = TF.hflip(img)
+        if vflip:
+            img = TF.vflip(img)
         return img
 
     @staticmethod
-    def image_crop_and_resize(
-        img: Image, crop_coords: Tuple, target_size: Tuple, resample_mode: str = None
-    ):
+    def image_crop(img: Image, crop_coords: Tuple):
         """Crop and resize an image
 
         :param img: Image to crop and resize
         :param crop_coords: Coordinates of the crop (top, left, h, w)
-        :param target_size: Coordinates of the resize (height, width)
         :return: Cropped and resized image
         """
 
-        top, left, h, w = crop_coords
-        resize_height, resize_width = target_size
-        img = TF.crop(img, top, left, h, w)
-        resample_mode = get_pil_resample_mode(resample_mode)
-        img = img.resize((resize_height, resize_width), resample=resample_mode)
+        row, col, h, w = crop_coords
+        img = TF.crop(img, row, col, h, w)
         return img
 
     @staticmethod
@@ -266,49 +260,16 @@ class RGBTransform(ImageTransform):
 
     def __init__(
         self,
-        imagenet_default_mean_and_std=True,
         mean_and_std="naip",
-        color_jitter=False,
-        color_jitter_strength=0.5,
         no_data_value=0,
     ):
         if mean_and_std == "naip":
             self.rgb_mean = NAIP_MEAN
             self.rgb_std = NAIP_STD
-        elif mean_and_std == "imagenet_default":
-            self.rgb_mean = IMAGENET_DEFAULT_MEAN
-            self.rgb_std = IMAGENET_DEFAULT_STD
-        elif mean_and_std == "imagenet_inception":
-            self.rgb_mean = IMAGENET_INCEPTION_MEAN
-            self.rgb_std = IMAGENET_INCEPTION_STD
         else:
             raise ValueError(f"Invalid mean_and_std: {mean_and_std}")
 
-        self.color_jitter = color_jitter
-        self.color_jitter_transform = self.random_color_jitter(color_jitter_strength)
         self.no_data_value = no_data_value
-
-    def random_color_jitter(self, strength=0.5):
-        # Color Jitter from Pix2Seq and SimCLR
-        # Source: https://github.com/google-research/pix2seq/blob/main/data/data_utils.py#L114
-        t = T.Compose(
-            [
-                T.RandomApply(
-                    [
-                        T.ColorJitter(
-                            brightness=0.8 * strength,
-                            contrast=0.8 * strength,
-                            saturation=0.8 * strength,
-                            hue=0.2 * strength,
-                        )
-                    ],
-                    p=0.8,
-                ),
-                T.RandomApply([T.Grayscale(num_output_channels=3)], p=0.2),
-            ]
-        )
-
-        return t
 
     def rgb_to_tensor(self, img):
         # to_tensor converts to float, rescales to [0, 1], and reshapes to C x H x W
@@ -325,10 +286,6 @@ class RGBTransform(ImageTransform):
 
     def preprocess(self, sample):
         sample = sample.convert("RGB")
-
-        if self.color_jitter:
-            sample = self.color_jitter_transform(sample)
-
         return sample
 
     def image_augment(
@@ -342,7 +299,8 @@ class RGBTransform(ImageTransform):
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_rotate(img, rotation_angle, self.no_data_value, resample_mode)
+        img = self.image_crop(img, crop_coords)
+        img = self.image_flip(img, flip)
         return img
 
     def postprocess(self, sample):
@@ -361,14 +319,11 @@ class DepthTransform(ImageTransform):
         self.no_data_value = no_data_value
 
     def depth_to_tensor(self, img):
-        # Why? (can't use this with the no_data_value anyways)
-        # img = torch.Tensor(img / (2**16 - 1.0))
         img = torch.Tensor(img)
         img = img.unsqueeze(0)  # 1 x H x W
-        # if self.standardize_depth:
-        #     img = self.truncated_depth_standardization(img)
         return img
 
+    # Called in __getitem__()
     def depth_tensor_norm(self, img):
         for op_str in self.norm_ops:
             if not hasattr(DepthTransform, op_str):
@@ -433,27 +388,6 @@ class DepthTransform(ImageTransform):
         ]
         return (depth - trunc_depth.mean()) / torch.sqrt(trunc_depth.var() + 1e-6)
 
-    @staticmethod
-    def depth_artifact_mask(depth, no_data_value=-9999.0, outlier_threshold=16):
-        """Depth artifact masking
-        For masking artifacts that result from clipping of DEM tiffs (essentially masking extreme outliers)
-
-        :param depth: Depth map
-        :param no_data_value: The value to be treated as no data
-        :param outlier_threshold: The threshold for outlier removal (distance from median in IQRs)
-        :return: Depth artifact mask
-        """
-        # to avoid inflating the median and IQR with values that will be hidden anyways
-        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
-        filtered_vals = depth[removal_mask]
-
-        # inspired by robust scaling
-        dists_from_median = np.abs(depth - np.median(filtered_vals))
-        dists_in_iqrs = dists_from_median / (iqr(filtered_vals) + 1e-6)
-
-        # return mask w/ True to keep, False to remove
-        return dists_in_iqrs < outlier_threshold
-
     def load(self, path):
         sample = self.pil_loader(path)
         return sample
@@ -472,13 +406,54 @@ class DepthTransform(ImageTransform):
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_rotate(img, rotation_angle, self.no_data_value, resample_mode)
+        img = self.image_crop(img, crop_coords)
+        img = self.image_flip(img, flip)
         return img
 
     def postprocess(self, sample):
         sample = np.array(sample)
         sample = self.depth_to_tensor(sample)
         return sample
+
+
+class TargetDistributionTransform(ImageTransform):
+
+    def __init__(
+        self,
+        spatial_res: int,  # meters per pixel
+        img_size: int,
+    ):
+        self.spatial_res = spatial_res
+        self.img_size = img_size
+
+    def load(self, data: pd.Series):
+        x = None  # TODO: use parameter_csv for this
+        y = None
+
+        target_dist = np.zeros((self.img_size, self.img_size))
+        target_dist[int(y), int(x)] = 1
+
+        return target_dist
+
+    def preprocess(self, sample):
+        return sample
+
+    def image_augment(
+        self,
+        val,
+        crop_coords: Tuple,
+        flip: bool,
+        rotation_angle: float,
+        orig_size: Tuple,
+        target_size: Tuple,
+        rand_aug_idx=None,
+        resample_mode: str = None,
+    ):
+        return val
+
+    def postprocess(self, target_distribution):
+        target_distribution = torch.as_tensor(target_distribution)
+        return target_distribution.unsqueeze(0)
 
 
 class TokTransform(AbstractTransform):
@@ -512,17 +487,27 @@ class TokTransform(AbstractTransform):
 
 class CaptionTransform(TextTokenizedTransform):
 
-    def __init__(self, caption_name: str = "prompt", return_attn_mask: bool = True):
-        self.caption_name = caption_name
+    def __init__(
+        self,
+        return_attn_mask: bool = True,
+        shuffle: bool = True,
+    ):
         self.return_attn_mask = return_attn_mask
+        self.shuffle = shuffle
 
     def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
         self.tokenizer = deepcopy(tokenizer)
         self.tokenizer.enable_padding(length=max_length, direction="left")
         self.tokenizer.enable_truncation(max_length)
 
-    def load(self, data: pd.Series):
-        return data[self.caption_name]
+    def load(self, data: pd.Series, uid: str) -> str:
+        # TODO:
+        # 1. load feature meanings dict for corresponding dataset to uid
+        # 2. shuffle keys in data series if shuffle is True
+        # 3. randomly select a sentence filler from feature meanings for each key in data series
+        # 4. fill each sentence with corresponding value from data series
+        # 5. concatenate all sentences into one string and return it
+        pass
 
     def preprocess(self, sample):
         return sample
@@ -557,44 +542,17 @@ class StructuredDataTransform(TextTokenizedTransform):
     def __init__(
         self,
         id_map: Dict[str, int],
-        shuffle: bool = True,
+        return_attn_mask: bool = True,
     ):
         self.id_map = id_map
-        self.shuffle = shuffle
-
-    def data_to_str(self, data: pd.Series):
-        keys = list(self.id_map.keys())
-
-        if self.shuffle:
-            random.shuffle(keys)
-
-        data_str = ""
-        for k in keys:
-            type_str = f"v0={self.id_map[k]}"
-
-            val = data[k]  # TODO: with the time data, this might be a string
-            val = np.float32(val)
-            if val == 0.0:
-                hex_str = "0" * 8  # using struct gives '0x0', but we need 8 hex zeros
-            else:
-                # Converts floating point to hexadecimal string
-                # Courtesy of https://stackoverflow.com/questions/23624212/how-to-convert-a-float-into-hex
-                hex_str = str(hex(struct.unpack("<I", struct.pack("<f", val))[0]))
-                hex_str = hex_str[2:]  # removes '0x'
-                hex_str = hex_str.upper()
-
-            byte_strs = [hex_str[i : i + 2] for i in range(0, len(hex_str), 2)]
-            val_str = f"v1=[{']['.join(byte_strs)}]"  # e.g. v1=[0A][B3] for float16
-            data_str += f"{type_str} {val_str} "
-
-        return data_str
+        self.return_attn_mask = return_attn_mask
 
     def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
         self.tokenizer = deepcopy(tokenizer)
         # We don't pad or truncate structured data b/c it is the same length every time
 
     def load(self, data: pd.Series):
-        return self.data_to_str(data)
+        pass  # TODO: implement this
 
     def preprocess(self, sample):
         return sample
@@ -610,6 +568,7 @@ class StructuredDataTransform(TextTokenizedTransform):
         rand_aug_idx=None,
         resample_mode: str = None,
     ):
+
         return val
 
     def postprocess(self, sample):
@@ -619,74 +578,7 @@ class StructuredDataTransform(TextTokenizedTransform):
         enc = self.tokenizer.encode(sample)
         ids = torch.as_tensor(enc.ids)
 
-        if len(ids) < 108:  # temp fix for weird varied length structured data bug
-            ids = torch.cat((ids, torch.zeros(108 - len(ids), dtype=torch.long)), dim=0)
-
         return ids
-
-
-class TargetDistributionTransform(AbstractTransform):
-
-    def __init__(
-        self,
-        spatial_res: int,  # meters per pixel
-        img_size: int,
-        offset_name: str = "offset",
-        bearing_name: str = "offset_bearing",
-        resize_ratio: float = None,
-    ):
-        self.spatial_res = spatial_res
-        self.img_size = img_size
-        self.offset_name = offset_name
-        self.bearing_name = bearing_name
-        self.resize_ratio = resize_ratio
-
-    def load(self, data: pd.Series):
-        original_angle = data[self.bearing_name]
-        offset = data[self.offset_name] * 1000  # in meters
-
-        # to reverse offset first reverse direction
-        reversed_angle = original_angle - 180
-
-        offset_x = offset * cos(radians(reversed_angle))
-        offset_y = offset * sin(radians(reversed_angle))
-
-        offset_x_pix = offset_x / self.spatial_res
-        offset_y_pix = offset_y / self.spatial_res
-
-        if self.resize_ratio is not None:
-            offset_x_pix *= self.resize_ratio
-            offset_y_pix *= self.resize_ratio
-
-        center_pix = self.img_size // 2
-        x = center_pix + offset_x_pix
-        y = center_pix + offset_y_pix
-
-        target_dist = np.zeros((self.img_size, self.img_size))
-        target_dist[int(y), int(x)] = 1
-
-        return target_dist
-
-    def preprocess(self, sample):
-        return sample
-
-    def image_augment(
-        self,
-        val,
-        crop_coords: Tuple,
-        flip: bool,
-        rotation_angle: float,
-        orig_size: Tuple,
-        target_size: Tuple,
-        rand_aug_idx=None,
-        resample_mode: str = None,
-    ):
-        # can't do anything b/c the conditioning tokens are already tokenized
-        return val
-
-    def postprocess(self, target_distribution):
-        target_distribution = torch.as_tensor(target_distribution)
-        return target_distribution.unsqueeze(0)
 
 
 class IdentityTransform(AbstractTransform):
