@@ -58,7 +58,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
             else:
-                if isinstance(layer, CrossAttentionBlock):
+                if isinstance(layer, NormCrossAttentionBlock):
                     x = layer(x, cond)
                 else:
                     x = layer(x)
@@ -210,13 +210,15 @@ class ConvNeXtV2Block(TimestepBlock):
         return x
 
 
-class CrossAttentionBlock(nn.Module):
+class NormCrossAttentionBlock(nn.Module):
+
     def __init__(
         self,
         dim,
         cond_dim,
         num_heads=8,
         qkv_bias=False,
+        norm_layer=nn.LayerNorm,
         attn_drop=0.0,
         proj_drop=0.0,
     ):
@@ -231,6 +233,9 @@ class CrossAttentionBlock(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
+
+        self.q_norm = norm_layer(head_dim)
+        self.k_norm = norm_layer(head_dim)
 
     def forward(self, x, cond):
         B, C, H, W = x.shape
@@ -250,6 +255,9 @@ class CrossAttentionBlock(nn.Module):
         )
         k, v = kv.unbind(0)
 
+        q = self.q_norm(q)  # norm attention
+        k = self.k_norm(k)
+
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = softmax1(attn, dim=-1)  # NOTE: we're using the custom softmax here
         attn = self.attn_drop(attn)
@@ -257,7 +265,7 @@ class CrossAttentionBlock(nn.Module):
         h = (attn @ v).transpose(1, 2).reshape(B, N, -1)
         h = self.proj(h)
         h = self.proj_drop(h)
-        return (x + h).reshape(B, C, H, W)
+        return (x + h).reshape(B, C, H, W)  # NOTE: includes skip connection
 
 
 class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
@@ -343,7 +351,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                         mlp_ratio=mlp_ratio,
                         act_layer=act_layer,
                     ),
-                    CrossAttentionBlock(
+                    NormCrossAttentionBlock(
                         dim=next_level_chans,
                         cond_dim=cond_dim,
                         num_heads=num_heads,
@@ -381,7 +389,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 mlp_ratio=mlp_ratio,
                 act_layer=act_layer,
             ),
-            CrossAttentionBlock(
+            NormCrossAttentionBlock(
                 dim=last_level_chans,
                 cond_dim=cond_dim,
                 num_heads=num_heads,
@@ -444,7 +452,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     )
                     for i in range(num_conv_blocks - 1)
                 ],
-                CrossAttentionBlock(
+                NormCrossAttentionBlock(
                     dim=level_chans,
                     cond_dim=cond_dim,
                     num_heads=num_heads,
@@ -504,7 +512,8 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             [
                 1
                 for m in self.modules()
-                if isinstance(m, ConvNeXtV2Block) or isinstance(m, CrossAttentionBlock)
+                if isinstance(m, ConvNeXtV2Block)
+                or isinstance(m, NormCrossAttentionBlock)
             ]
         )
 

@@ -147,22 +147,14 @@ ID_MAP = {  # for structured data transform
 }
 
 MODALITY_TRANSFORMS = {
-    "caption": CaptionTransform(caption_name="prompt"),
+    "caption": CaptionTransform(caption_col_name="prompt"),
     "tok_rgb": TokTransform(),
     "tok_depth": TokTransform(),
-    "structured_data": StructuredDataTransform(
-        id_map=ID_MAP, shuffle=False  # turn off shuffling for now
-    ),
+    "structured_data": StructuredDataTransform(id_map=ID_MAP),
     "target_distribution": TargetDistributionTransform(
         spatial_res=2,
         img_size=224,
-        offset_name="offset",
-        bearing_name="offset_bearing",
-        resize_ratio=224 / 1000,
     ),
-}
-
-MODALITY_TRANSFORMS_VQVAE = {
     "rgb": RGBTransform(
         mean_and_std="naip", no_data_value=MODALITY_INFO["rgb"]["no_data_value"]
     ),

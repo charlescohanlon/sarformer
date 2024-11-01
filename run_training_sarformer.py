@@ -1607,7 +1607,7 @@ def distance_weighted_loss(
     reduction="mean",
 ):
     """
-    Computes the distance-weighted binary cross-entropy loss between the predicted spatial
+    Computes the distance-weighted loss between the predicted spatial
     distribution and the target one-hot distribution.
 
     Args:

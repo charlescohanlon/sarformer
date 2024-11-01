@@ -52,8 +52,6 @@ class NativeScalerWithGradNormCount:
                     return norm
             else:
                 self._scaler.unscale_(optimizer)
-
-                # What is the point of this? Why is this logged?
                 norm = get_grad_norm_(parameters) if compute_grad_norm else None
 
             self._scaler.step(optimizer)

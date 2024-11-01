@@ -1,7 +1,7 @@
 import sys, os
 import torch
 
-from .vqvae import VQ, VQVAE, DiVAE, VQControlNet
+from .vqvae import VQ, VQVAE
 from .scheduling import *
 
 
