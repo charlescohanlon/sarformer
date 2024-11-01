@@ -503,24 +503,26 @@ class CaptionTransform(TextTokenizedTransform):
         self.tokenizer.enable_truncation(max_length)
 
     def load(self, data: pd.Series, uid: str, shuffle: bool = True) -> str:
-        # TODO:
-        # 1. load feature meanings dict for corresponding dataset to uid
-        # 2. shuffle keys in data series if shuffle is True
-        # 3. randomly select a sentence filler from feature meanings for each key in data series
-        # 4. fill each sentence with corresponding value from data series
-        # 5. concatenate all sentences into one string and return it
 
-        if "Unlabeled" in uid:
+        if "unlabeled" in uid.lower():
             prefix = uid[: uid.index("Unlabeled")]
-        elif "Labeled" in uid:
+        elif "labeled" in uid.lower():
             prefix = uid[: uid.index("Labeled")]
+        else:
+            raise ValueError(f"SOMETHING FUCKED UP {uid}")
 
         sentence_templates = TEMPLATES[prefix]
         sentences = []
 
-        for col in data.index:
-            template = random.sample(sentence_templates[col], 1)
-            sentences.append(template.replace("[VALUE]", str(data[col])))
+        for col in data[~data.isna()].index:
+
+            if col in sentence_templates.keys():
+                template = random.sample(sentence_templates[col], 1)[0]
+
+                if not template.endswith("."):
+                    template += "."
+
+                sentences.append(template.replace("[VALUE]", str(data[col])))
 
         caption = (
             " ".join(random.sample(sentences, len(sentences)))
