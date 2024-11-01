@@ -514,7 +514,7 @@ class CaptionTransform(TextTokenizedTransform):
             "Labeled", ""
         )  # TODO check if right
 
-        sentence_templates = all_sentence_templates[dataset]
+        sentence_templates = TEMPLATES[dataset]
         sentences = []
 
         for col in data.index:
