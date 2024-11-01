@@ -445,7 +445,7 @@ class SARFormer(nn.Module):
 
 
 @register_model
-def sarformer_t_swiglu_qknorm(
+def sarformer_swiglu_qknorm(
     encoder_embeddings: Dict[str, nn.Module],
     **kwargs,
 ):

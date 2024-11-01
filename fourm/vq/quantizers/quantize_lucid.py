@@ -299,7 +299,6 @@ class EuclideanCodebook(nn.Module):
                 f"{self.code_replacement_policy} is not a valid dead code replacement strategy."
             )
 
-    @autocast(device_type="cuda", enabled=False)
     def forward(self, x):
         x = x.float()
 
@@ -436,7 +435,6 @@ class CosineSimCodebook(nn.Module):
                 f"{self.code_replacement_policy} is not a valid dead code replacement strategy."
             )
 
-    @autocast(device_type="cuda", enabled=False)
     def forward(self, x):
         x = x.float()
 
@@ -498,7 +496,7 @@ class VectorQuantize(nn.Module):
         threshold_ema_dead_code=0,
         code_replacement_policy="batch_random",  # batch_random or linde_buzo_gray
         channel_last=False,
-        accept_image_fmap=True,
+        accept_image_fmap=True,  # accept unflattened image feature maps
         commitment_weight=1.0,
         orthogonal_reg_weight=0.0,
         orthogonal_reg_active_codes_only=False,
@@ -524,7 +522,6 @@ class VectorQuantize(nn.Module):
         self.commitment_weight = commitment_weight
         self.norm_latents = norm_latents
 
-        has_codebook_orthogonal_loss = orthogonal_reg_weight > 0
         self.orthogonal_reg_weight = orthogonal_reg_weight
         self.orthogonal_reg_active_codes_only = orthogonal_reg_active_codes_only
         self.orthogonal_reg_max_codes = orthogonal_reg_max_codes
@@ -541,9 +538,7 @@ class VectorQuantize(nn.Module):
             threshold_ema_dead_code=threshold_ema_dead_code,
             code_replacement_policy=code_replacement_policy,
             use_ddp=sync_codebook,
-            # BUG?: learnable_codebook=has_codebook_orthogonal_loss,
-            # has_codebook_orthogonal_loss is 0 by default and is not included in args of instantiation (at least for DiVAE)
-            learnable_codebook=True,
+            learnable_codebook=True,  # We're only using learned codebook
             sample_codebook_temp=sample_codebook_temp,
         )
 

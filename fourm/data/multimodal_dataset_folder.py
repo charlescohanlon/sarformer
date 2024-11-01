@@ -198,7 +198,8 @@ class MultiModalDatasetFolder(VisionDataset):
         self.modality_info = modality_info
         self.return_path = return_path
 
-        for transform in self.modality_transforms.values():
+        for mod in self.modalities:
+            transform = self.modality_transforms[get_modality_prefix(mod)]
             if hasattr(transform, "set_tokenizer"):
                 if tokenizer is None or max_text_tok_length is None:
                     raise ValueError(
@@ -214,7 +215,7 @@ class MultiModalDatasetFolder(VisionDataset):
 
         if not_none_path:
             _, class_to_idx = self._find_classes(os.path.join(root, not_none_path))
-        # else: there are no paths at all, (i.e., we're only using dataframe data) and there are no classes
+        # else: there are no paths at all, (i.e., we're only using dataframe data)
 
         extensions = UNIFIED_EXTENSIONS if is_valid_file is None else None
 
@@ -231,8 +232,7 @@ class MultiModalDatasetFolder(VisionDataset):
                     valid_ids,
                     is_valid_file,
                 )
-                if self.modality_paths[mod] is not None  # mod comes from dataframe
-                # Every modality from the dataframe has no class
+                if self.modality_paths[mod] is not None  # else mod comes from dataframe
                 else [
                     (uid, 0)  # use uid instead of a path
                     for uid in data_df.index
@@ -303,15 +303,19 @@ class MultiModalDatasetFolder(VisionDataset):
         """
         sample_dict = {}
         missing_data_mods = []
-        has_path = False  # to keep track of whether any modality has a path
+        any_has_path = False  # to keep track of whether any modality has a path
+        uid = None  # for when random crop needs to know the uid (using a parameter csv)
         for mod in self.modalities:
             if self.modality_paths[mod] is None:
                 uid, _ = self.samples[mod][index]
                 data = self.data_df.loc[uid]
-                sample = self.modality_transforms[get_modality_prefix(mod)].load(data)
+                sample = self.modality_transforms[get_modality_prefix(mod)].load(
+                    data, uid
+                )
             else:
-                has_path = True
+                any_has_path = True
                 path, _ = self.samples[mod][index]
+                uid = path.split("/")[-1].split(".")[0]
                 sample = self.modality_transforms[get_modality_prefix(mod)].load(path)
 
             sample_dict[mod] = sample
@@ -322,11 +326,14 @@ class MultiModalDatasetFolder(VisionDataset):
         if self.transform is not None:
             # Applies the UnifiedDataTransform which augments the data (as well as pre and
             # post processes it)
-            sample_dict = self.transform(sample_dict)
+            sample_dict = self.transform(sample_dict, uid)
 
         if self.return_path:
-            if not has_path:  # mods from dataframe only
-                sample_dict["class_id"] = ""
+            if not any_has_path:  # all mods are from dataframe only
+                is_labeled = "unlabeled" not in uid.lower()
+                sample_dict["class_id"] = (
+                    "labeled" if is_labeled else "unlabeled"
+                ) + "_sar"
                 sample_dict["file_name"] = uid
             else:
                 class_id, file_name = self.get_class_and_file(path)
@@ -374,13 +381,14 @@ def compute_mask(mods_list: List[Tuple[str, float, torch.Tensor]]):
     mask = torch.ones(1, H, W, dtype=torch.bool)  # True to keep, False to remove
 
     # format of the mods_list: (mod_name, no_data_value, sample) where sample is image tensor
-    for mod_name, no_data_value, sample in mods_list:
-        no_data_mask = (sample != no_data_value).all(dim=channel_dim, keepdim=True)
-        nan_mask = np.isfinite(sample).all(dim=channel_dim, keepdim=True)
-        mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
+    for _, no_data_value, sample in mods_list:
+        # if any (along channel_dim) IS a valid value (i.e., not no_data_value), keep it
+        no_data_mask = (sample != no_data_value).any(dim=channel_dim, keepdim=True)
 
-        if mod_name == "depth":
-            artifact_mask = DepthTransform.depth_artifact_mask(sample, no_data_value)
-            mask = mask.logical_and(artifact_mask)
+        # all (along channel_dim) must be finite values
+        nan_mask = np.isfinite(sample).all(dim=channel_dim, keepdim=True)
+
+        # True to keep, False to remove
+        mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
 
     return mask
