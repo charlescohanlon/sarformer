@@ -34,7 +34,8 @@ from fourm.utils.data_constants import (
     NAIP_STD,
 )
 
-from fourm.data.sentence_templates import all_sentence_templates
+from fourm.data.templates import TEMPLATES
+
 
 # The @-symbol is used to specify the resolution of a modality. Syntax: modality@resolution
 def get_modality_prefix(mod_name):
@@ -501,7 +502,7 @@ class CaptionTransform(TextTokenizedTransform):
         self.tokenizer.enable_padding(length=max_length, direction="left")
         self.tokenizer.enable_truncation(max_length)
 
-    def load(self, data: pd.Series, uid: str, shuffle:bool = True) -> str:
+    def load(self, data: pd.Series, uid: str, shuffle: bool = True) -> str:
         # TODO:
         # 1. load feature meanings dict for corresponding dataset to uid
         # 2. shuffle keys in data series if shuffle is True
@@ -509,7 +510,9 @@ class CaptionTransform(TextTokenizedTransform):
         # 4. fill each sentence with corresponding value from data series
         # 5. concatenate all sentences into one string and return it
 
-        dataset = uid.replace('Unlabeled','').replace('Labeled','') # TODO check if right
+        dataset = uid.replace("Unlabeled", "").replace(
+            "Labeled", ""
+        )  # TODO check if right
 
         sentence_templates = all_sentence_templates[dataset]
         sentences = []
@@ -518,9 +521,12 @@ class CaptionTransform(TextTokenizedTransform):
             template = random.sample(sentence_templates[col], 1)
             sentences.append(template.replace("[VALUE]", str(data[col])))
 
-        caption = " ".join(random.sample(sentences, len(sentences))) if shuffle else " ".join(sentences)
+        caption = (
+            " ".join(random.sample(sentences, len(sentences)))
+            if shuffle
+            else " ".join(sentences)
+        )
         return caption
-    
 
     def preprocess(self, sample):
         return sample

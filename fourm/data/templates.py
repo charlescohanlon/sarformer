@@ -1,18 +1,14 @@
 import os
 import importlib
 
-from Augmented_Text_Dicts import *
+TEMPLATES = {}  # keys are the prefix of the dataset: ie 'AZ', 'MRA'
 
-print(os.getcwd())
-
-all_sentence_templates = {} # keys are the prefix of the dataset: ie 'AZ', 'MRA'
-
-data_path = 'fourm\data\Augmented_Text_Dicts'
+data_path = "fourm/data/sentence_templates"
 
 for filename in os.listdir(data_path):
 
     if filename.endswith(".py") and filename != "__init__.py":
-        
+
         modulepath = os.path.join(data_path, filename)
         modulename = filename[:-3]
 
@@ -20,7 +16,6 @@ for filename in os.listdir(data_path):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        key = modulename.split('_')[0]
+        key = modulename.split("_")[0]
 
-        all_sentence_templates[key] = getattr(module, modulename)
-
+        TEMPLATES[key] = getattr(module, "AUGMENTED_FEATURE_MEANINGS")

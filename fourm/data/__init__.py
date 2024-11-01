@@ -8,3 +8,4 @@ from .unified_datasets import (
     build_huggingface_pretraining_dataloader,
     build_mixture_dataloader,
 )
+from .sentence_templates import *

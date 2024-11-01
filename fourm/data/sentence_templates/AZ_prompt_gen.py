@@ -1,0 +1,34 @@
+AUGMENTED_FEATURE_MEANINGS = {
+    "Age": [
+        "The age of the lost subject is [VALUE]",
+        "[VALUE] is the lost subject's age",
+        "The lost subject is [VALUE] years of age",
+        "The missing person is [VALUE] years old",
+        "The lost subject is aged [VALUE]",
+        "The lost subject is [VALUE] years old",
+    ],
+    "County": [
+        "[VALUE] is the county of the lost person(s)",
+        "The lost person(s) was/were in [VALUE] county",
+        "The search is taking place in [VALUE] county",
+        "[VALUE] county is where the lost person(s) is/are located",
+        "The lost person(s) went missing in [VALUE] county",
+        "The county of the lost person(s) is [VALUE]",
+    ],
+    "Gender": [
+        "The lost subject identifies as [VALUE]",
+        "[VALUE] is the gender of the lost subject",
+        "The missing person is a [VALUE]",
+        "The gender of the missing person is [VALUE]",
+        "The lost subject's gender is [VALUE]",
+        "The lost subject is [VALUE]",
+    ],
+    "Mission..Situation": [
+        "The lost subject is classified as [VALUE]",
+        "[VALUE] describes the situation of the missing " "subject",
+        "The mission classification for the lost subject is " "[VALUE]",
+        "This search and rescue incident is classified as " "[VALUE]",
+        "The lost subject falls under the category of [VALUE]",
+        "[VALUE] is a classification of the lost subject",
+    ],
+}
