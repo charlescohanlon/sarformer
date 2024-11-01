@@ -510,11 +510,12 @@ class CaptionTransform(TextTokenizedTransform):
         # 4. fill each sentence with corresponding value from data series
         # 5. concatenate all sentences into one string and return it
 
-        dataset = uid.replace("Unlabeled", "").replace(
-            "Labeled", ""
-        )  # TODO check if right
+        if "Unlabeled" in uid:
+            prefix = uid[: uid.index("Unlabeled")]
+        elif "Labeled" in uid:
+            prefix = uid[: uid.index("Labeled")]
 
-        sentence_templates = all_sentence_templates[dataset]
+        sentence_templates = TEMPLATES[prefix]
         sentences = []
 
         for col in data.index:
