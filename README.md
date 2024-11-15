@@ -2,25 +2,34 @@
 
 ## Random Notes
 
-Mistakes from last vqvae run: wrong mean and std, too few warmup epochs (use 100), many images were all or mostly black, validation computed too often, 
+Pre-train idea:
+Use a pre-trained text encoder (e.g., T5) to create latent embeddings for sequence input
+1. Cut out NAIP/DEM tifs at 1785 (893 + 893 - 1)
+2. Crop random 893 (447 + 447 - 1) 
+    - supposed to produce a simulated observation that takes place in same viscinity
+    - select crop based on some kind of normal distribution complement? (that makes edges more likely)
+3. Simulate prob agent from random start within 893 crop
+4. Crop 447 w/ end point at center
+During pre-training
+    - freeze text encoder
+    - select random SAR case to select cut out image
+        - take corresponding data and add noise then use as conditioning
+Fine-tune on sar
+    - still weight real cases in the loss
 
-Idea: perceptual loss w/ some kind of sparse image model
 
 ### Todo:
+- Cameron:
+- Matthew:
+    - research noising as an augmentation
+    - write augmenter code
+- Charles: 
+    - write shapefile script
+    - write mae conv code
+    - test t5 encoder
 
-- Fit probabilistic agent model
-    - Select cases that have IPP and found point within the image, also that have subject categories
-    - run on 893x893 images, but constrain to 447x447 center crop 
-- Run inference w/ probabilistic agent model
-    - run once on all unlabeled cases and produce 447x447 crops with the resulting label at the center
-- Train VQVAE on new images
-    - need to compute NAIP mean and standard deviation on 447 images
-    - figure out why codebook usage frequency works
-- Pre-tokenize images
-    - Generate aug params for 1000 crops each
-    - Move tokens to OSN (object store)
-    - write Tok load() to get from OSN
-        - dataloader should choose UID then augmentation index at random
+- Compute NAIP mean and standard deviation on 447 images
+- Random crop with normal distribution
 - Download new weather data values
     - debug segfault issue
 - Bucket sar, time, and weather values
@@ -35,7 +44,6 @@ Idea: perceptual loss w/ some kind of sparse image model
         - also include IPP position in pixel distance
             - check how many IPPs fall outside image to get idea
             - only if within image? outside image too?
-        - noise as augmentation?
 - Select SARFormer val split
     - select from cases where nothing was imputed
 - Train SARFormer

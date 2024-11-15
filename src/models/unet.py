@@ -35,33 +35,18 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     return embedding
 
 
-class TimestepBlock(nn.Module):
+class ConditionedSequential(nn.Sequential):
     """
-    Any module where forward() takes timestep embeddings as a second argument.
-    """
-
-    @abstractmethod
-    def forward(self, x, emb):
-        """
-        Apply the module to `x` given `emb` timestep embeddings.
-        """
-
-
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
-    """
-    A sequential module that passes timestep embeddings to the children that
+    A sequential module that passes embeddings to the children that
     support it as an extra input.
     """
 
-    def forward(self, x, emb, cond=None):
+    def forward(self, x, cond=None):
         for layer in self:
-            if isinstance(layer, TimestepBlock):
-                x = layer(x, emb)
+            if isinstance(layer, NormCrossAttentionBlock):
+                x = layer(x, cond)
             else:
-                if isinstance(layer, NormCrossAttentionBlock):
-                    x = layer(x, cond)
-                else:
-                    x = layer(x)
+                x = layer(x)
         return x
 
 
@@ -149,9 +134,9 @@ class GRN(nn.Module):
         return self.gamma * (x * Nx) + self.beta + x
 
 
-class ConvNeXtV2Block(TimestepBlock):
+class ConvNeXtV2Block(nn.Module):
     """
-    ConvNeXt Block. There are two equivalent implementations:
+    ConvNeXt Block.
     Modified from https://github.com/facebookresearch/ConvNeXt/blob/main/models/convnext.py
 
     Args:
@@ -166,7 +151,6 @@ class ConvNeXtV2Block(TimestepBlock):
     def __init__(
         self,
         dim,
-        time_embed_dim,
         output_dim=None,
         drop_path=0.0,
         mlp_ratio=4.0,
@@ -175,7 +159,6 @@ class ConvNeXtV2Block(TimestepBlock):
         super().__init__()
         if output_dim is None:
             output_dim = dim
-        self.time_embed_proj = nn.Linear(time_embed_dim, dim)
         self.skip_proj = (
             nn.Linear(dim, output_dim) if dim != output_dim else nn.Identity()
         )
@@ -192,11 +175,9 @@ class ConvNeXtV2Block(TimestepBlock):
 
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
-    def forward(self, x, emb):
-        emb = self.time_embed_proj(emb)
+    def forward(self, x):
         h = self.skip_proj(rearrange(x, "b c h w -> b h w c"))
 
-        x = x + emb[..., None, None]  # (B, C, H, W) + (B, C, 1, 1) -> (B, C, H, W)
         x = self.dwconv(x)
         x = rearrange(x, "b c h w -> b h w c")
         x = self.norm(x)
@@ -208,6 +189,56 @@ class ConvNeXtV2Block(TimestepBlock):
 
         x = self.drop_path(x) + rearrange(h, "b h w c -> b c h w")
         return x
+
+
+class NormAttentionBlock(nn.Module):
+
+    def __init__(
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        norm_layer=nn.LayerNorm,
+        attn_drop=0.0,
+        proj_drop=0.0,
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = head_dim**-0.5
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.q_norm = norm_layer(head_dim)
+        self.k_norm = norm_layer(head_dim)
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        x = rearrange(x, "b c h w -> b (h w) c")
+        _, N, _ = x.shape
+
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k, v = qkv.unbind(0)
+
+        q = self.q_norm(q)  # norm attention
+        k = self.k_norm(k)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = softmax1(attn, dim=-1)  # NOTE: we're using the custom softmax here
+        attn = self.attn_drop(attn)
+
+        h = (attn @ v).transpose(1, 2).reshape(B, N, -1)
+        h = self.proj(h)
+        h = self.proj_drop(h)
+        return (x + h).reshape(B, C, H, W)  # includes skip connection
 
 
 class NormCrossAttentionBlock(nn.Module):
@@ -265,17 +296,18 @@ class NormCrossAttentionBlock(nn.Module):
         h = (attn @ v).transpose(1, 2).reshape(B, N, -1)
         h = self.proj(h)
         h = self.proj_drop(h)
-        return (x + h).reshape(B, C, H, W)  # NOTE: includes skip connection
+        return (x + h).reshape(B, C, H, W)  # includes skip connection
 
 
-class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
+class ConvNeXtUNetModel(nn.Module):
     """
     The full UNet model with attention and timestep embedding.
 
     :param in_channels: channels in the input Tensor.
     :param model_channels: base channel count for the model.
     :param out_channels: channels in the output Tensor.
-    :param cond_dim: the dimension of the conditioning tensor.
+    :param cond_dim: the dimension of the conditioning tensor. If None, no conditioning is
+        applied, and self-attention is used instead of cross-attention.
     :param num_conv_blocks: number of residual blocks per downsample. Must be at least 2.
     :param attn_drop: the dropout probability in the attention mechanism.
     :param proj_drop: the dropout probability in the projection after the attention.
@@ -290,7 +322,7 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
         in_channels=3,
         model_channels=256,
         out_channels=3,
-        cond_dim=768,
+        cond_dim=None,
         num_conv_blocks=3,
         attn_drop=0.0,
         proj_drop=0.0,
@@ -303,12 +335,6 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
         self.model_channels = model_channels
-        time_embed_dim = int(model_channels * mlp_ratio)
-        self.time_embed = nn.Sequential(
-            nn.Linear(model_channels, time_embed_dim),
-            act_layer(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
 
         self.in_proj = nn.Linear(in_channels, model_channels)
 
@@ -335,7 +361,6 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                         # isotropic
                         ConvNeXtV2Block(
                             dim=level_chans,
-                            time_embed_dim=time_embed_dim,
                             drop_path=dp_rates[dp_index + i],
                             mlp_ratio=mlp_ratio,
                             act_layer=act_layer,
@@ -345,35 +370,43 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     # increase embedding dims
                     ConvNeXtV2Block(
                         dim=level_chans,
-                        time_embed_dim=time_embed_dim,
                         output_dim=next_level_chans,
                         drop_path=dp_rates[dp_index + num_conv_blocks - 1],
                         mlp_ratio=mlp_ratio,
                         act_layer=act_layer,
                     ),
-                    NormCrossAttentionBlock(
-                        dim=next_level_chans,
-                        cond_dim=cond_dim,
-                        num_heads=num_heads,
-                        attn_drop=attn_drop,
-                        proj_drop=proj_drop,
-                        qkv_bias=qkv_bias,
+                    (
+                        NormAttentionBlock(
+                            dim=next_level_chans,
+                            num_heads=num_heads,
+                            attn_drop=attn_drop,
+                            proj_drop=proj_drop,
+                            qkv_bias=qkv_bias,
+                        )
+                        if cond_dim is None
+                        else NormCrossAttentionBlock(
+                            dim=next_level_chans,
+                            cond_dim=cond_dim,
+                            num_heads=num_heads,
+                            attn_drop=attn_drop,
+                            proj_drop=proj_drop,
+                            qkv_bias=qkv_bias,
+                        )
                     ),
                 ]
             )
             dp_index += num_conv_blocks
-            self.down_blocks.append(TimestepEmbedSequential(*layers))
+            self.down_blocks.append(ConditionedSequential(*layers))
             down_chans.append(next_level_chans)
 
         # Middle
         last_level_chans = model_channels * channel_mult[-1]
-        self.middle_block = TimestepEmbedSequential(
+        self.middle_block = ConditionedSequential(
             Downsample(scale_factor=channel_mult[-2] / channel_mult[-1]),
             *[
                 # isotropic
                 ConvNeXtV2Block(
                     dim=next_level_chans,
-                    time_embed_dim=time_embed_dim,
                     drop_path=dp_rates[dp_index + i],
                     mlp_ratio=mlp_ratio,
                     act_layer=act_layer,
@@ -383,25 +416,33 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             # increase embedding dims
             ConvNeXtV2Block(
                 dim=next_level_chans,
-                time_embed_dim=time_embed_dim,
                 output_dim=last_level_chans,
                 drop_path=dp_rates[dp_index + num_conv_blocks - 1],
                 mlp_ratio=mlp_ratio,
                 act_layer=act_layer,
             ),
-            NormCrossAttentionBlock(
-                dim=last_level_chans,
-                cond_dim=cond_dim,
-                num_heads=num_heads,
-                attn_drop=attn_drop,
-                proj_drop=proj_drop,
-                qkv_bias=qkv_bias,
+            (
+                NormAttentionBlock(
+                    dim=last_level_chans,
+                    num_heads=num_heads,
+                    attn_drop=attn_drop,
+                    proj_drop=proj_drop,
+                    qkv_bias=qkv_bias,
+                )
+                if cond_dim is None
+                else NormCrossAttentionBlock(
+                    dim=last_level_chans,
+                    cond_dim=cond_dim,
+                    num_heads=num_heads,
+                    attn_drop=attn_drop,
+                    proj_drop=proj_drop,
+                    qkv_bias=qkv_bias,
+                )
             ),
             *[
                 # isotropic
                 ConvNeXtV2Block(
                     dim=last_level_chans,
-                    time_embed_dim=time_embed_dim,
                     drop_path=dp_rates[dp_index + num_conv_blocks + i],
                     mlp_ratio=mlp_ratio,
                     act_layer=act_layer,
@@ -411,7 +452,6 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             # decrease embedding dims
             ConvNeXtV2Block(
                 dim=last_level_chans,
-                time_embed_dim=time_embed_dim,
                 output_dim=next_level_chans,
                 drop_path=dp_rates[dp_index + num_conv_blocks * 2 - 1],
                 mlp_ratio=mlp_ratio,
@@ -431,7 +471,6 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
             layers = [
                 ConvNeXtV2Block(
                     dim=prev_level_chans + down_chans.pop(),
-                    time_embed_dim=time_embed_dim,
                     # if only one conv block (so this is the last) reduce chans
                     output_dim=(
                         level_chans if num_conv_blocks == 1 else prev_level_chans
@@ -443,7 +482,6 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                 *[
                     ConvNeXtV2Block(
                         dim=prev_level_chans,
-                        time_embed_dim=time_embed_dim,
                         # reduces chans if the last conv block, otherwise isotropic
                         output_dim=level_chans if i == num_conv_blocks - 2 else None,
                         drop_path=dp_rates[dp_index + 1 + i],
@@ -452,38 +490,41 @@ class ConvNeXtUNetModel(ModelMixin, ConfigMixin):
                     )
                     for i in range(num_conv_blocks - 1)
                 ],
-                NormCrossAttentionBlock(
-                    dim=level_chans,
-                    cond_dim=cond_dim,
-                    num_heads=num_heads,
-                    attn_drop=attn_drop,
-                    proj_drop=proj_drop,
-                    qkv_bias=qkv_bias,
+                (
+                    NormAttentionBlock(
+                        dim=level_chans,
+                        num_heads=num_heads,
+                        attn_drop=attn_drop,
+                        proj_drop=proj_drop,
+                        qkv_bias=qkv_bias,
+                    )
+                    if cond_dim is None
+                    else NormCrossAttentionBlock(
+                        dim=level_chans,
+                        cond_dim=cond_dim,
+                        num_heads=num_heads,
+                        attn_drop=attn_drop,
+                        proj_drop=proj_drop,
+                        qkv_bias=qkv_bias,
+                    )
                 ),
             ]
             dp_index += num_conv_blocks
             if level > 1:  # don't upsample again at the top level
                 layers.append(Upsample(scale_factor=prev_level / level))
-            self.up_blocks.append(TimestepEmbedSequential(*layers))
+            self.up_blocks.append(ConditionedSequential(*layers))
 
         self.norm = nn.LayerNorm(level_chans, eps=1e-6)
         self.out_proj = nn.Linear(level_chans, out_channels)
 
-    def forward(self, x, timesteps, cond):
+    def forward(self, x, cond=None):
         """
         Apply the model to an input batch.
 
         :param x: an [B x C x H x W] Tensor of inputs.
-        :param timesteps: a [B] Tensor of timesteps or a number of them.
         :param cond: an [B x N x D] Tensor of encoded conditioning.
         :return: an [B x C x H x W] Tensor of outputs.
         """
-        if not torch.is_tensor(timesteps):
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=x.device)
-        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
-            timesteps = timesteps.unsqueeze(0).to(x.device)
-
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
         hs = []  # Hidden states for skip connections
 
         x = rearrange(x, "b c h w -> b h w c")

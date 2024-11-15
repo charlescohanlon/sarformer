@@ -15,6 +15,7 @@ import random
 from abc import ABC, abstractmethod
 
 import numpy as np
+from scipy.stats import truncnorm
 
 from fourm.utils import to_2tuple
 
@@ -32,22 +33,36 @@ class CropImageAugmenter(AbstractImageAugmenter):
     def __init__(
         self,
         target_size=224,
-        hflip=0.5,
-        vflip=0.5,
+        crop_std=1.0,
+        hflip=None,
+        vflip=None,
         parameter_csv=None,
     ):
         self.target_size = to_2tuple(target_size)
+        self.crop_std = crop_std
         self.hflip = hflip
         self.vflip = vflip
         self.parameter_csv = parameter_csv
 
     def __call__(self, uid=None):
         if self.parameter_csv is None:
-            # in range [0, 223] inclusive
-            crop_row = random.randint(0, self.target_size[0] - 1)
-            crop_col = random.randint(0, self.target_size[1] - 1)
-            hflip = random.random() < self.hflip
-            vflip = random.random() < self.vflip
+            # center distribution at center of valid crop range
+            start_idx, end_idx = 0, self.target_size[0] - 1
+            mean = (start_idx + end_idx) / 2
+
+            # compute bounds of truncated normal distribution in stds
+            lower_std = (start_idx - mean) / self.crop_std
+            upper_std = (end_idx - mean) / self.crop_std
+
+            # sample truncated normal distribution and round to discretize it
+            crop_row = round(
+                truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
+            )
+            crop_col = round(
+                truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
+            )
+            hflip = random.random() < self.hflip if self.hflip is not None else False
+            vflip = random.random() < self.vflip if self.vflip is not None else False
         else:
             if uid is None:
                 raise ValueError("uid must be provided when using a parameter csv")

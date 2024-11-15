@@ -2,20 +2,13 @@ import math
 from functools import partial
 from typing import Any, Dict, Optional, Tuple, Union
 
-from numpy import isin
 import torch
-from einops import repeat
 from torch import nn
 
 from fourm.utils.timm.registry import register_model
-from fourm.vq.scheduling.diffusion_pipeline import PipelineCond
-from fourm.vq.scheduling.scheduling_ddim import DDIMScheduler
-from fourm.vq.scheduling.scheduling_ddpm import DDPMScheduler
-from diffusers.schedulers.scheduling_utils import SchedulerMixin
 
 from .fm_utils import EncoderBlock, LayerNorm
 from fourm.models.unet import PatchedConvNeXtUNet
-from fourm.data.modality_info import MODALITY_INFO
 
 
 class SARFormer(nn.Module):
@@ -83,12 +76,6 @@ class SARFormer(nn.Module):
         gated_mlp: bool = False,  # Make the feedforward gated for e.g. SwiGLU
         qk_norm: bool = False,
         allow_zero_attn: bool = False,
-        scheduler_type: str = "ddpm",
-        num_train_timesteps: int = 1000,
-        thresholding: bool = False,
-        beta_schedule: str = "squaredcos_cap_v2",
-        prediction_type: str = "sample",
-        zero_terminal_snr: bool = True,
     ):
         super().__init__()
 
@@ -146,17 +133,6 @@ class SARFormer(nn.Module):
             qkv_bias=qkv_bias,
             act_layer=act_layer,
         )
-
-        # Init diffusion scheduler / default pipeline for generation
-        scheduler = DDPMScheduler if scheduler_type == "ddpm" else DDIMScheduler
-        self.noise_scheduler = scheduler(
-            num_train_timesteps=num_train_timesteps,
-            thresholding=thresholding,
-            beta_schedule=beta_schedule,
-            prediction_type=prediction_type,
-            zero_terminal_snr=zero_terminal_snr,
-        )
-        self.pipeline = PipelineCond(model=self, scheduler=self.noise_scheduler)
 
         # Weight init
         self.init_weights()
@@ -235,22 +211,6 @@ class SARFormer(nn.Module):
                 no_wd_set = no_wd_set | to_skip
 
         return no_wd_set
-
-    def _get_pipeline(self, scheduler: Optional[SchedulerMixin] = None) -> PipelineCond:
-        """Creates a conditional diffusion pipeline with the given scheduler.
-
-        Args:
-            scheduler: Scheduler to use for the diffusion pipeline.
-              If None, the default scheduler will be used.
-
-        Returns:
-            Conditional diffusion pipeline.
-        """
-        return (
-            PipelineCond(model=self, scheduler=scheduler)
-            if scheduler is not None
-            else self.pipeline
-        )
 
     def cat_encoder_tensors(
         self,
@@ -369,79 +329,25 @@ class SARFormer(nn.Module):
 
     def forward(
         self,
-        noisy_image: torch.Tensor,
-        timesteps: torch.Tensor,
-        cond: Union[
-            Dict[str, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]],
-            torch.Tensor,
-        ],
-        unconditional: bool = False,
-        **kwargs,  # to absorb additional arguments from PipelineCond
+        x: torch.Tensor,
+        cond: Dict[str, Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]],
     ) -> torch.Tensor:
         """Forward pass of the SARFormer model.
 
         Args:
-            noisy_image (torch.Tensor): Noisy image tensor. Shape (B, C, H, W)
-            timesteps (torch.Tensor): Timestep tensor. Shape (B)
-            cond (dict): If tensor it's the already-encoded input. Otherwise it's a
-                dictionary containing tensors for the different conditioning modalities.
-                It is expected to have keys for each and values containing the modalities'
-                associated tensors.
-            unconditional (bool): If True, the model is run unconditionally. (Not implemented)
+
 
         Returns:
             torch.Tensor: The scalar field logits. Shape (B, 1, H, W)
 
         """
         # Conditioning Encoder
-        context = self.forward_encoder(cond) if isinstance(cond, dict) else cond
+        context = self.forward_encoder(cond)
 
-        # Diffusion Backbone
-        x = self.backbone(noisy_image, timesteps, context)
+        # Semseg Backbone
+        x = self.backbone(x, context)
 
         return x
-
-    def generate(
-        self,
-        cond_mod_dict: Dict[str, Dict[str, torch.Tensor]],
-        timesteps: Optional[int] = None,
-        scheduler: Optional[SchedulerMixin] = None,
-        generator: Optional[torch.Generator] = None,
-        cfg_scale: float = 0.0,
-        image_size: Optional[Union[Tuple[int, int], int]] = None,
-        verbose: bool = False,
-        scheduler_timesteps_mode: str = "trailing",
-    ) -> torch.Tensor:
-        """Decodes quantized latent codes back to an image.
-
-        Args:
-            cond_mod_dict (dict): Dictionary containing tensors for the different conditioning
-                modalities. It is expected to have keys for each modality and values containing
-                the modalities' associated tensors.
-            timesteps: Number of diffusion timesteps to use. Defaults to self.num_train_timesteps.
-            scheduler: Scheduler to use for the diffusion pipeline. Defaults to the training scheduler.
-            generator: Random number generator to use for sampling. By default generations are stochastic.
-            cfg_scale: The scale of the classifier-free guidance. If set to 0.0, no guidance is used.
-            image_size: Image size to use for the diffusion pipeline. Defaults to decoder image size.
-            verbose: Whether or not to print progress bar.
-            scheduler_timesteps_mode: The mode to use for DDIMScheduler. One of `trailing`, `linspace`,
-                `leading`. See https://arxiv.org/abs/2305.08891 for more details.
-
-        Returns:
-            Decoded image tensor of shape B C H W
-        """
-        cond = self.forward_encoder(cond_mod_dict)
-        pipeline = self._get_pipeline(scheduler)
-        result = pipeline(
-            cond,
-            timesteps=timesteps,
-            generator=generator,
-            guidance_scale=cfg_scale,
-            image_size=image_size,
-            verbose=verbose,
-            scheduler_timesteps_mode=scheduler_timesteps_mode,
-        )
-        return result
 
 
 @register_model
