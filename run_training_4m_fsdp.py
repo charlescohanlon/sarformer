@@ -40,19 +40,19 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 
-import fourm.utils as utils
-import fourm.utils.fsdp_utils as fsdp_utils
-from fourm.data import (
+import src.utils as utils
+import src.utils.fsdp_utils as fsdp_utils
+from src.data import (
     build_mixture_dataloader,
     get_train_dataloader,
     get_val_dataloader,
     setup_sampling_mod_info,
 )
-from fourm.models import fm
-from fourm.models.fm_utils import EncoderBlock, DecoderBlock
-from fourm.data.modality_info import MODALITY_INFO
-from fourm.utils import create_model
-from fourm.utils.optim_factory import create_optimizer
+from src.models import fm
+from src.models.fm_utils import EncoderBlock, DecoderBlock
+from src.data.modality_info import MODALITY_INFO
+from src.utils import create_model
+from src.utils.optim_factory import create_optimizer
 
 
 def get_args():

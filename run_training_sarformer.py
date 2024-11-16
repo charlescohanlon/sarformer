@@ -44,18 +44,18 @@ from torchmetrics.image import (
 )
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 import diffusers.schedulers as diffusers_schedulers
-from fourm.data.image_augmenter import EmptyAugmenter
-from fourm.vq.scheduling import DDPMScheduler, DDIMScheduler
+from src.data.image_augmenter import EmptyAugmenter
+from src.vq.scheduling import DDPMScheduler, DDIMScheduler
 
-from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
-import fourm.utils as utils
-from fourm.data.modality_transforms import UnifiedDataTransform
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
-from fourm.utils import create_model
-from fourm.utils.optim_factory import create_optimizer
-from fourm.utils import NativeScalerWithGradNormCount as NativeScaler
+from src.data.multimodal_dataset_folder import MultiModalDatasetFolder
+import src.utils as utils
+from src.data.modality_transforms import UnifiedDataTransform
+from src.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
+from src.utils import create_model
+from src.utils.optim_factory import create_optimizer
+from src.utils import NativeScalerWithGradNormCount as NativeScaler
 
-import fourm.models.sarformer  # Needed for @register_model to work
+import src.models.sarformer  # Needed for @register_model to work
 
 
 def get_args():

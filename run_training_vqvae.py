@@ -16,8 +16,8 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import sys
-from fourm.data.image_augmenter import CropImageAugmenter
-from fourm.utils.data_constants import NAIP_MEAN, NAIP_STD
+from src.data.image_augmenter import CropImageAugmenter
+from src.utils.data_constants import NAIP_MEAN, NAIP_STD
 
 sys.path.insert(0, "..")
 import argparse
@@ -54,16 +54,16 @@ from torchmetrics.image import (
 from torchmetrics.image.fid import FrechetInceptionDistance
 from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 
-import fourm.utils as utils
-from fourm.data.modality_transforms import UnifiedDataTransform
-from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
-from fourm.utils import ModelEmaV2 as ModelEma
-from fourm.utils import NativeScalerWithGradNormCount as NativeScaler
-from fourm.utils import destandardize
-from fourm.utils.optim_factory import create_optimizer
-from fourm.vq.vq_utils import compute_codebook_usage
-from fourm.vq.vqvae import VQVAE
+import src.utils as utils
+from src.data.modality_transforms import UnifiedDataTransform
+from src.data.multimodal_dataset_folder import MultiModalDatasetFolder
+from src.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
+from src.utils import ModelEmaV2 as ModelEma
+from src.utils import NativeScalerWithGradNormCount as NativeScaler
+from src.utils import destandardize
+from src.utils.optim_factory import create_optimizer
+from src.vq.vq_utils import compute_codebook_usage
+from src.vq.vqvae import VQVAE
 
 
 def unwrap_model(model: Union[nn.Module, DDP]) -> nn.Module:

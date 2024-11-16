@@ -17,7 +17,7 @@ from math import sin
 import numpy as np
 import pandas as pd
 
-from fourm.data.modality_transforms import (
+from src.data.modality_transforms import (
     CaptionTransform,
     DepthTransform,
     RGBTransform,
@@ -25,11 +25,11 @@ from fourm.data.modality_transforms import (
     StructuredDataTransform,
     TargetDistributionTransform,
 )
-from fourm.models.encoder_embeddings import (
+from src.models.encoder_embeddings import (
     ImageTokenEncoderEmbedding,
     SequenceEncoderEmbedding,
 )
-from fourm.utils import generate_uint15_hash
+from src.utils import generate_uint15_hash
 
 MODALITY_INFO = {
     "target_distribution": {

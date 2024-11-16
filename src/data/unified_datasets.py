@@ -39,13 +39,13 @@ except ImportError:
         "Huggingface datasets not installed. Please install with `pip install datasets`."
     )
 
-from fourm.data.masking import TransferMasking, UnifiedMasking
-from fourm.data.modality_transforms import (
+from src.data.masking import TransferMasking, UnifiedMasking
+from src.data.modality_transforms import (
     UnifiedDataTransform,
     get_modality_prefix,
 )
-from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
-from fourm.utils.dist import get_rank, get_world_size
+from src.data.multimodal_dataset_folder import MultiModalDatasetFolder
+from src.utils.dist import get_rank, get_world_size
 
 
 def build_fm_pretraining_dataset(

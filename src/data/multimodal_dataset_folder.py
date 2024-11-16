@@ -24,7 +24,7 @@ from tokenizers import Tokenizer
 import torch
 from torchvision.datasets.vision import VisionDataset
 
-from fourm.data.modality_transforms import (
+from src.data.modality_transforms import (
     AbstractTransform,
     DepthTransform,
     get_modality_prefix,

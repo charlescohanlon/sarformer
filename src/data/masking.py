@@ -22,9 +22,9 @@ from einops import rearrange
 from tokenizers import Tokenizer
 from torch.distributions import Dirichlet
 
-from fourm.data.modality_transforms import get_modality_prefix
-from fourm.utils import to_2tuple
-from fourm.utils.tokenizer import get_sentinel_to_id_mapping
+from src.data.modality_transforms import get_modality_prefix
+from src.utils import to_2tuple
+from src.utils.tokenizer import get_sentinel_to_id_mapping
 
 
 def sample_cosine(min_val: float = 0, max_val: float = 1) -> float:

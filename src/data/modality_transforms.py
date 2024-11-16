@@ -27,14 +27,14 @@ import torchvision.transforms.functional as TF
 import torchvision.transforms as T
 import pandas as pd
 
-from fourm.data.image_augmenter import AbstractImageAugmenter
-from fourm.utils import to_2tuple
-from fourm.utils.data_constants import (
+from src.data.image_augmenter import AbstractImageAugmenter
+from src.utils import to_2tuple
+from src.utils.data_constants import (
     NAIP_MEAN,
     NAIP_STD,
 )
 
-from fourm.data.templates import TEMPLATES
+from src.data.templates import TEMPLATES
 
 
 # The @-symbol is used to specify the resolution of a modality. Syntax: modality@resolution

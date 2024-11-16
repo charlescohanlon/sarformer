@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-from fourm.models.fm_utils import softmax1
+from src.models.fm_utils import softmax1
 
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.models.modeling_utils import ModelMixin

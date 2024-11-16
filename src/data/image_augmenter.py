@@ -17,7 +17,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from scipy.stats import truncnorm
 
-from fourm.utils import to_2tuple
+from src.utils import to_2tuple
 
 
 class AbstractImageAugmenter(ABC):

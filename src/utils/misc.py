@@ -17,7 +17,7 @@ import collections.abc
 from itertools import repeat
 import torchvision.transforms.functional as TF
 
-from fourm.utils.data_constants import NAIP_MEAN, NAIP_STD
+from src.utils.data_constants import NAIP_MEAN, NAIP_STD
 
 
 def destandardize(img, mean=NAIP_MEAN, std=NAIP_STD):

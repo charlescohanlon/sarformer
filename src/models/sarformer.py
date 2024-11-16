@@ -5,10 +5,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from fourm.utils.timm.registry import register_model
+from src.utils.timm.registry import register_model
 
 from .fm_utils import EncoderBlock, LayerNorm
-from fourm.models.unet import PatchedConvNeXtUNet
+from src.models.unet import PatchedConvNeXtUNet
 
 
 class SARFormer(nn.Module):

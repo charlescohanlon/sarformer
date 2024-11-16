@@ -13,8 +13,8 @@
 # limitations under the License.
 import os
 import argparse
-from fourm.utils.tokenizer import train_unified_wordpiece_tokenizer
-from fourm.utils.tokenizer import (
+from src.utils.tokenizer import train_unified_wordpiece_tokenizer
+from src.utils.tokenizer import (
     generate_sentinel_tokens,
     generate_coord_tokens,
     generate_object_class_tokens,

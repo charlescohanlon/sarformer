@@ -22,11 +22,11 @@ from einops import rearrange, repeat
 from torch import nn
 import torch.nn.functional as F
 
-from fourm.utils.timm.registry import register_model
+from src.utils.timm.registry import register_model
 from huggingface_hub import PyTorchModelHubMixin
 
 from .fm_utils import EncoderBlock, DecoderBlock, LayerNorm
-from fourm.data.modality_info import MODALITY_INFO
+from src.data.modality_info import MODALITY_INFO
 
 
 # Model definitions

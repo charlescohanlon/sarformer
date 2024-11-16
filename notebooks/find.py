@@ -1,9 +1,9 @@
 import torch
 import pandas as pd
-from fourm.data.multimodal_dataset_folder import MultiModalDatasetFolder
-from fourm.data.modality_transforms import UnifiedDataTransform
-from fourm.data.image_augmenter import EmptyAugmenter
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
+from src.data.multimodal_dataset_folder import MultiModalDatasetFolder
+from src.data.modality_transforms import UnifiedDataTransform
+from src.data.image_augmenter import EmptyAugmenter
+from src.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
 from tokenizers import Tokenizer
 from tqdm import tqdm
 

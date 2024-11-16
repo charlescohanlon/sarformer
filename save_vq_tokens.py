@@ -26,12 +26,12 @@ from torch.utils.data import Dataset
 from torchvision.datasets.folder import find_classes, make_dataset
 from tqdm import tqdm
 
-import fourm.utils as utils
-import fourm.utils.clip as clip
-from fourm.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
-from fourm.vq import get_image_tokenizer
-import fourm.utils.clip as clip
-from fourm.data.multimodal_dataset_folder import compute_mask
+import src.utils as utils
+import src.utils.clip as clip
+from src.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
+from src.vq import get_image_tokenizer
+import src.utils.clip as clip
+from src.data.multimodal_dataset_folder import compute_mask
 
 FEATURE_TASKS = ["CLIP-B16", "DINOv2-B14", "DINOv2-B14-global"]
 IMG_EXTENSIONS = (

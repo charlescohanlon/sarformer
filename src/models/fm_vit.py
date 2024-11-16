@@ -19,12 +19,12 @@ from typing import Optional, Union
 import torch
 from torch import nn
 
-from fourm.utils.timm.registry import register_model
+from src.utils.timm.registry import register_model
 from huggingface_hub import PyTorchModelHubMixin
 
 from .encoder_embeddings import ImageEncoderEmbedding
 from .fm_utils import EncoderBlock, LayerNorm
-from fourm.data.modality_info import MODALITY_INFO
+from src.data.modality_info import MODALITY_INFO
 
 
 __all__ = [
