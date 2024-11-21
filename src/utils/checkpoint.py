@@ -28,16 +28,6 @@ from .dist import save_on_main, is_main_process
 from .timm.model import get_state_dict
 
 
-def _load_checkpoint_for_ema(model_ema, checkpoint):
-    """
-    Workaround for ModelEma._load_checkpoint to accept an already-loaded object
-    """
-    mem_file = io.BytesIO()
-    torch.save(checkpoint, mem_file)
-    mem_file.seek(0)
-    model_ema._load_checkpoint(mem_file)
-
-
 def load_state_dict(model, state_dict, prefix="", ignore_missing=""):
     missing_keys = []
     unexpected_keys = []
@@ -112,7 +102,6 @@ def save_model(
     loss_balancer=None,
     model_ema=None,
     ckpt_name=None,
-    use_s3=False,
     all_nodes=False,
 ):
     output_dir = Path(args.output_dir)
@@ -140,10 +129,6 @@ def save_model(
             to_save["model_ema"] = get_state_dict(model_ema)
 
         save_on_main(to_save, checkpoint_path)
-
-        if use_s3:
-            s3_path = os.path.join(args.s3_save_dir, f"checkpoint-{ckpt_name}.pth")
-            save_on_s3(checkpoint_path, s3_path, args.s3_endpoint)
 
 
 def auto_load_model(
@@ -181,12 +166,6 @@ def auto_load_model(
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
-
-        if hasattr(args, "model_ema") and args.model_ema:
-            _load_checkpoint_for_ema(
-                model_ema, {"state_dict_ema": checkpoint["model_ema"]}
-            )
-            print("With EMA!")
 
 
 def parse_metadata(metadata_str):

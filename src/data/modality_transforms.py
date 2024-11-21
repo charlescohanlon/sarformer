@@ -11,21 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from copy import deepcopy
 import random
 from typing import Optional, Text, Tuple, Union, Dict
 from abc import ABC, abstractmethod
+import os
 
 from PIL import Image
-from math import radians, sin, cos
 
 from scipy.stats import iqr
 import numpy as np
-from tokenizers import Tokenizer
+from transformers import T5Tokenizer
 import torch
 import torchvision.transforms.functional as TF
 import torchvision.transforms as T
 import pandas as pd
+import re
 
 from src.data.image_augmenter import AbstractImageAugmenter
 from src.utils import to_2tuple
@@ -35,20 +35,6 @@ from src.utils.data_constants import (
 )
 
 from src.data.templates import TEMPLATES
-
-
-# The @-symbol is used to specify the resolution of a modality. Syntax: modality@resolution
-def get_modality_prefix(mod_name):
-    return mod_name.split("@")[0] if "@" in mod_name else mod_name
-
-
-def get_transform_resolution(mod_name, default_resolution, to_tuple=True):
-    res = int(mod_name.split("@")[1]) if "@" in mod_name else default_resolution
-    return to_2tuple(res) if to_tuple else res
-
-
-def get_transform(mod_name, transforms_dict):
-    return transforms_dict.get(get_modality_prefix(mod_name), IdentityTransform())
 
 
 def get_pil_resample_mode(resample_mode: str):
@@ -84,7 +70,6 @@ class UnifiedDataTransform(object):
         transforms_dict,
         image_augmenter: Optional[AbstractImageAugmenter],
         resample_mode: Optional[str] = None,
-        **kwargs,
     ):
         """Unified data augmentation for FourM
 
@@ -93,13 +78,14 @@ class UnifiedDataTransform(object):
             image_augmenter (AbstractImageAugmenter): Image augmenter
             resample_mode (str, optional): Resampling mode for PIL images (default: None -> uses default resampling mode for data type)
                 One out of ["bilinear", "bicubic", "nearest", None].
+            img_size (int): Image size for the modality
         """
 
         self.transforms_dict = transforms_dict
         self.image_augmenter = image_augmenter
         self.resample_mode = resample_mode
 
-    def unified_image_augment(self, mod_dict, uid=None):
+    def unified_image_augment(self, mod_dict):
         """Apply the image augmenter to all modalities where it is applicable
 
         Args:
@@ -110,18 +96,15 @@ class UnifiedDataTransform(object):
             dict: Transformed dict of modalities
         """
 
-        crop_coords, flip, orig_size, target_size, rand_aug_idx, rotation_angle = (
-            self.image_augmenter(uid)
-        )
+        crop_coords, flip, orig_size, target_size, rand_aug_idx = self.image_augmenter()
 
         mod_dict = {
-            k: self.transforms_dict[get_modality_prefix(k)].image_augment(
+            k: self.transforms_dict[k].image_augment(
                 v,
                 crop_coords=crop_coords,
                 flip=flip,
-                rotation_angle=rotation_angle,
                 orig_size=orig_size,
-                target_size=get_transform_resolution(k, target_size),
+                target_size=target_size,
                 rand_aug_idx=rand_aug_idx,
                 resample_mode=self.resample_mode,
             )
@@ -130,7 +113,7 @@ class UnifiedDataTransform(object):
 
         return mod_dict
 
-    def __call__(self, mod_dict, uid=None):
+    def __call__(self, mod_dict):
         """Apply the augmentation to a dict of modalities (both image based and sequence based modalities)
 
         Args:
@@ -141,14 +124,14 @@ class UnifiedDataTransform(object):
             dict: Transformed dict of modalities
         """
         mod_dict = {
-            k: get_transform(k, self.transforms_dict).preprocess(v)
+            k: self.transforms_dict[k].preprocess(v)
             for k, v in mod_dict.items()
         }
 
-        mod_dict = self.unified_image_augment(mod_dict, uid)
+        mod_dict = self.unified_image_augment(mod_dict)
 
         mod_dict = {
-            k: get_transform(k, self.transforms_dict).postprocess(v)
+            k: self.transforms_dict[k].postprocess(v)
             for k, v in mod_dict.items()
         }
 
@@ -176,7 +159,6 @@ class AbstractTransform(ABC):
         v,
         crop_coords: Tuple,
         flip: bool,
-        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -186,16 +168,6 @@ class AbstractTransform(ABC):
 
     @abstractmethod
     def postprocess(self, v):
-        pass
-
-
-class TextTokenizedTransform(AbstractTransform):
-    @abstractmethod
-    def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
-        pass
-
-    @abstractmethod
-    def load(self, data: pd.Series, uid: str):
         pass
 
 
@@ -247,7 +219,6 @@ class ImageTransform(AbstractTransform):
         """Rotate an image
 
         :param img: Image to rotate
-        :param angle: Angle of the rotation
         :param fill_val: Value to fill the area outside the transformed image
         :param resample_mode: mode of interpolation
         :return: Rotated image
@@ -295,7 +266,6 @@ class RGBTransform(ImageTransform):
         img,
         crop_coords: Tuple,
         flip: bool,
-        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -307,6 +277,7 @@ class RGBTransform(ImageTransform):
 
     def postprocess(self, sample):
         sample = self.rgb_to_tensor(sample)
+        sample = self.rgb_tensor_norm(sample)
         return sample
 
 
@@ -325,7 +296,6 @@ class DepthTransform(ImageTransform):
         img = img.unsqueeze(0)  # 1 x H x W
         return img
 
-    # Called in __getitem__()
     def depth_tensor_norm(self, img):
         for op_str in self.norm_ops:
             if not hasattr(DepthTransform, op_str):
@@ -402,7 +372,6 @@ class DepthTransform(ImageTransform):
         img,
         crop_coords: Tuple,
         flip: bool,
-        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -415,6 +384,7 @@ class DepthTransform(ImageTransform):
     def postprocess(self, sample):
         sample = np.array(sample)
         sample = self.depth_to_tensor(sample)
+        sample = self.depth_tensor_norm(sample)
         return sample
 
 
@@ -422,18 +392,14 @@ class TargetDistributionTransform(ImageTransform):
 
     def __init__(
         self,
-        spatial_res: int,  # meters per pixel
         img_size: int,
     ):
-        self.spatial_res = spatial_res
         self.img_size = img_size
 
-    def load(self, data: pd.Series):
-        x = None  # TODO: use parameter_csv for this
-        y = None
-
+    def load(self):
+        center_point = (self.img_size // 2, self.img_size // 2)
         target_dist = np.zeros((self.img_size, self.img_size))
-        target_dist[int(y), int(x)] = 1
+        target_dist[center_point[0], center_point[1]] = 1
 
         return target_dist
 
@@ -442,94 +408,69 @@ class TargetDistributionTransform(ImageTransform):
 
     def image_augment(
         self,
-        val,
+        img,
         crop_coords: Tuple,
         flip: bool,
-        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
         resample_mode: str = None,
     ):
-        return val
+        img = self.image_crop(img, crop_coords)
+        img = self.image_flip(img, flip)
+        return img
 
     def postprocess(self, target_distribution):
         target_distribution = torch.as_tensor(target_distribution)
         return target_distribution.unsqueeze(0)
 
 
-class TokTransform(AbstractTransform):
-
-    def __init__(self):
-        pass
-
-    def load(self, path):
-        sample = np.load(path).astype(int)
-        return sample
-
-    def preprocess(self, sample):
-        return sample
-
-    def image_augment(
-        self,
-        val,
-        crop_coords: Tuple,
-        flip: bool,
-        rotation_angle: float,
-        orig_size: Tuple,
-        target_size: Tuple,
-        rand_aug_idx: Optional[int],
-        resample_mode: str = None,
-    ):
-        return val
-
-    def postprocess(self, sample):
-        return torch.as_tensor(sample)
-
-
-class CaptionTransform(TextTokenizedTransform):
+class CaptionTransform(AbstractTransform):
 
     def __init__(
         self,
         return_attn_mask: bool = True,
         shuffle: bool = True,
+        root: str = None,
+        tokenizer_name: str = "t5-small",
+        index_col_name: str = "uid",
     ):
         self.return_attn_mask = return_attn_mask
         self.shuffle = shuffle
 
-    def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
-        self.tokenizer = deepcopy(tokenizer)
-        self.tokenizer.enable_padding(length=max_length, direction="left")
-        self.tokenizer.enable_truncation(max_length)
+        for dir in os.listdir(root):
+            path = os.path.join(root, dir)
+            self.datasets = {}
+            for file in os.listdir(path):
+                if not file.endswith(".csv"):
+                    raise ValueError(f"Invalid file type: {file} in {path}")
+                path = os.path.join(path, file)
+                self.datasets[file[: -len(".csv")]] = pd.read_csv(
+                    path, index_col=index_col_name
+                )
+        if len(self.datasets) == 0:
+            raise ValueError(f"No data caption found in {root}")
 
-    def load(self, data: pd.Series, uid: str, shuffle: bool = True) -> str:
+        self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name)
 
-        if "unlabeled" in uid.lower():
-            prefix = uid[: uid.index("Unlabeled")]
-        elif "labeled" in uid.lower():
-            prefix = uid[: uid.index("Labeled")]
-        else:
-            raise ValueError(f"SOMETHING FUCKED UP {uid}")
+    def load(self, path) -> str:
+        uid = path.split("/")[-1]
+        # regex matches contigious substring of non-digits starting from the beginning of the string
+        dataset_name = re.match(r"^[^\d]*", uid).group()
+        dataset = self.datasets[dataset_name]
+        row = dataset.loc[uid]
 
-        sentence_templates = TEMPLATES[prefix]
+        sentence_templates = TEMPLATES[dataset_name]
         sentences = []
-
-        for col in data[~data.isna()].index:
-
-            if col in sentence_templates.keys():
-                template = random.sample(sentence_templates[col], 1)[0]
-
+        for col in row[~row.isna()].index:  # exclude NAs
+            if col in sentence_templates.keys():  # only use specified relevant columns
+                template = random.choice(sentence_templates[col])
                 if not template.endswith("."):
                     template += "."
 
-                sentences.append(template.replace("[VALUE]", str(data[col])))
+                sentences.append(template.replace("[VALUE]", str(row[col])))
 
-        caption = (
-            " ".join(random.sample(sentences, len(sentences)))
-            if shuffle
-            else " ".join(sentences)
-        )
-        return caption
+        return " ".join(random.shuffle(sentences) if self.shuffle else sentences)
 
     def preprocess(self, sample):
         return sample
@@ -539,7 +480,6 @@ class CaptionTransform(TextTokenizedTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
-        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -548,33 +488,39 @@ class CaptionTransform(TextTokenizedTransform):
         return val
 
     def postprocess(self, sample):
-        assert self.tokenizer is not None, "Tokenizer must be set for caption transform"
-        enc = self.tokenizer.encode(sample)
-        ids = torch.as_tensor(enc.ids)
-
-        if self.return_attn_mask:
-            mask = torch.as_tensor(enc.attention_mask)
-            return ids, mask
-
-        return ids
+        inputs = self.tokenizer.encode(sample, return_tensors="pt")
+        return inputs
 
 
-class StructuredDataTransform(TextTokenizedTransform):
+class StructuredDataTransform(AbstractTransform):
 
     def __init__(
         self,
-        id_map: Dict[str, int],
+        col_map: Dict[str, str],
+        shuffle: bool = True,
         return_attn_mask: bool = True,
+        root: str = None,
+        tokenizer_name: str = "t5-small",
+        index_col_name: str = "uid",
     ):
-        self.id_map = id_map
+        self.col_map = col_map
+        self.shuffle = shuffle
         self.return_attn_mask = return_attn_mask
+        class_dir = os.path.join(root, os.listdir(root)[0])
+        data_path = os.path.join(class_dir, os.listdir(class_dir)[0])
+        self.data = pd.read_csv(data_path, index_col=index_col_name)
+        self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name)
 
-    def set_tokenizer(self, tokenizer: Tokenizer, max_length: int):
-        self.tokenizer = deepcopy(tokenizer)
-        # We don't pad or truncate structured data b/c it is the same length every time
+    def load(self, path):
+        uid = path.split("/")[-1]
+        row = self.data.loc[uid]
+        kv_strs = []
+        for col_name in self.col_map.keys():
+            natural_name = self.col_map[col_name]
+            value = row[col_name]
+            kv_strs.append(f"{natural_name}: {value}")
 
-    def load(self, data: pd.Series):
-        pass  # TODO: implement this
+        return " ".join(random.shuffle(kv_strs) if self.shuffle else kv_strs)
 
     def preprocess(self, sample):
         return sample
@@ -584,45 +530,13 @@ class StructuredDataTransform(TextTokenizedTransform):
         val,
         crop_coords: Tuple,
         flip: bool,
-        rotation_angle: float,
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
         resample_mode: str = None,
     ):
-
         return val
 
     def postprocess(self, sample):
-        assert (
-            self.tokenizer is not None
-        ), "Tokenizer must be set for structured data transform"
-        enc = self.tokenizer.encode(sample)
-        ids = torch.as_tensor(enc.ids)
-
-        return ids
-
-
-class IdentityTransform(AbstractTransform):
-
-    def load(self, path):
-        raise NotImplementedError("IdentityTransform does not support loading")
-
-    def preprocess(self, sample):
-        return sample
-
-    def image_augment(
-        self,
-        val,
-        crop_coords: Tuple,
-        flip: bool,
-        rotation_angle: float,
-        orig_size: Tuple,
-        target_size: Tuple,
-        rand_aug_idx: Optional[int],
-        resample_mode: str = None,
-    ):
-        return val
-
-    def postprocess(self, sample):
-        return sample
+        inputs = self.tokenizer.encode(sample, return_tensors="pt")
+        return inputs

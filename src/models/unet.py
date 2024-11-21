@@ -9,31 +9,6 @@ import torch.nn.functional as F
 from einops import rearrange
 from src.models.fm_utils import softmax1
 
-from diffusers.configuration_utils import ConfigMixin
-from diffusers.models.modeling_utils import ModelMixin
-
-
-def timestep_embedding(timesteps, dim, max_period=10000):
-    """
-    Create sinusoidal timestep embeddings.
-
-    :param timesteps: a [B] Tensor of indices.
-    :param dim: the dimension of the output.
-    :param max_period: controls the minimum frequency of the embeddings.
-    :return: an [B x N] Tensor of positional embeddings.
-    """
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(half) / half).to(
-        timesteps.device
-    )
-
-    args = timesteps.unsqueeze(1).float() * freqs.unsqueeze(0)
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2 == 1:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-
-    return embedding
-
 
 class ConditionedSequential(nn.Sequential):
     """
@@ -533,14 +508,14 @@ class ConvNeXtUNetModel(nn.Module):
         x = rearrange(x, "b h w c -> b c h w")
 
         for blk in self.down_blocks:
-            x = blk(x, emb, cond)
+            x = blk(x, cond)
             hs.append(x)
 
-        x = self.middle_block(x, emb, cond)
+        x = self.middle_block(x, cond)
 
         for blk in self.up_blocks:
             x = torch.cat([x, hs.pop()], dim=1)
-            x = blk(x, emb, cond)
+            x = blk(x, cond)
 
         x = rearrange(x, "b c h w -> b h w c")
         x = self.norm(x)
@@ -568,6 +543,7 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
         out_channels: Number of output channels
         cond_channels: Number of conditioning channels
         patch_size: Size of the patch projection before and after the UNet
+        masking_ratio: Ratio of masking to apply to the patches for MAE
     """
 
     def __init__(
@@ -593,8 +569,8 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
     def forward(
         self,
         sample: torch.FloatTensor,  # Shape (B, C, H, W)
-        timesteps: Union[torch.Tensor, float, int],  # Shape (B) if tensor
-        cond: torch.Tensor = None,  # Shape (B, N, D)
+        cond: torch.Tensor,  # Shape (B, N, D)
+        mask: Union[None, torch.BoolTensor] = None,  # Shape (B, H, W)
     ):
         _, _, H, W = sample.shape
 
@@ -614,7 +590,7 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
             nw=N_W,
         )
 
-        x = super().forward(x, timesteps, cond)
+        x = super().forward(x, cond)
 
         # Depatchify output from B (C * P_H * P_W) N_H N_W -> B C H W
         x = rearrange(

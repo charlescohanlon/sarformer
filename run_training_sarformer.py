@@ -42,11 +42,7 @@ from torchmetrics.image import (
     PeakSignalNoiseRatio,
     MultiScaleStructuralSimilarityIndexMeasure,
 )
-from diffusers.schedulers.scheduling_utils import SchedulerMixin
-import diffusers.schedulers as diffusers_schedulers
 from src.data.image_augmenter import EmptyAugmenter
-from src.vq.scheduling import DDPMScheduler, DDIMScheduler
-
 from src.data.multimodal_dataset_folder import MultiModalDatasetFolder
 import src.utils as utils
 from src.data.modality_transforms import UnifiedDataTransform
@@ -130,7 +126,7 @@ def get_args():
     parser.add_argument(
         "--cond_domains",
         nargs="+",
-        default=["tok_rgb@224", "tok_depth@224", "caption", "structured_data"],
+        default=["rgb", "depth", "caption", "structured_data"],
         help="Input modalities (default: %(default)s)",
     )
 
@@ -251,99 +247,9 @@ def get_args():
 
     # Data
     parser.add_argument(
-        "--data_csv_path",
-        type=str,
-        help="Path to CSV file containing structured data. (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--csv_delimiter",
-        type=str,
-        default="@",
-        help="Delimiter for CSV file containing structured data. (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--csv_index_col",
-        type=str,
-        default="uid",
-        help="Index column for CSV file containing structured data. (default: %(default)s)",
-    )
-    parser.add_argument(
         "--no_use_valid_ids", action="store_false", dest="use_valid_ids"
     )
     parser.set_defaults(use_valid_ids=True)
-
-    # Diffusion parameters
-    parser.add_argument(
-        "--num_train_timesteps",
-        default=1000,
-        type=int,
-        help="Number of diffusion steps during training (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--eval_noise_schedule",
-        default="DDIMScheduler",
-        type=str,
-        help="Type of diffusers.schedulers noise scheduler for evaluation. (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--num_eval_timesteps",
-        default=50,
-        type=int,
-        help="Number of diffusion steps during evaluation (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--beta_schedule",
-        default="linear",
-        type=str,
-        help="Forward process beta schedule. linear or squaredcos_cap_v2 (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--zero_terminal_snr",
-        action="store_true",
-        help="Enforce SNR of beta schedule to be zero at t=T. (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--no_zero_terminal_snr", action="store_false", dest="zero_terminal_snr"
-    )
-    parser.set_defaults(zero_terminal_snr=True)
-    parser.add_argument(
-        "--cfg_scale",
-        default=0.0,
-        type=float,
-        help="Scale of the classifier-free guidance (default: %(default)s)",
-    )
-    # NOTE: We don't support this in the model rn but should we?
-    # parser.add_argument(
-    #     "--cls_free_guidance_dropout",
-    #     default=0.2,
-    #     type=int,
-    #     help="Condition dropout percentage during training for classifier free guidance (default: %(default)s)",
-    # )
-    # parser.add_argument(
-    #     "--masked_cfg",
-    #     action="store_true",
-    #     help="Enable to perform masking on the encoded tokens. (default: %(default)s)",
-    # )
-    # parser.add_argument("--no_masked_cfg", action="store_false", dest="masked_cfg")
-    # parser.set_defaults(masked_cfg=True)
-    # parser.add_argument(
-    #     "--masked_cfg_low",
-    #     default=0,
-    #     type=int,
-    #     help="Lower bound of number of tokens to mask out (default: %(default)s)",
-    # )
-    # parser.add_argument(
-    #     "--masked_cfg_high",
-    #     default=None,
-    #     type=int,
-    #     help="Upper bound of number of tokens to mask out, defaults to total number of tokens minus 1 (default: %(default)s)",
-    # )
-    parser.add_argument(
-        "--thresholding",
-        default=True,
-        type=bool,
-        help="Whether or not to dynamically clip outputs to [-1,1]. Only affects inference time. (default: %(default)s)",
-    )
 
     # Eval
     parser.add_argument(
@@ -404,6 +310,12 @@ def get_args():
     )
 
     # Misc.
+    parser.add_argument(
+        "--objective",
+        type=str,
+        choices=["mae", "lost-person location"],
+        help="Objective to train the model on (default: %(default)s)",
+    )
     parser.add_argument(
         "--output_dir", default="", help="Path where to save, empty for no saving"
     )
@@ -501,18 +413,8 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
     # Set up shared modality info
     modality_info = setup_modality_info(args)
 
-    # Text
-    text_tokenizer = None
-    if args.text_tokenizer_path:
-        text_tokenizer = Tokenizer.from_file(args.text_tokenizer_path)
-        max_text_tok_len = modality_info["caption"]["max_tokens"]
-
     # Structured data and text
     data_df = None
-    if args.data_csv_path:
-        data_df = pd.read_csv(
-            args.data_csv_path, sep=args.csv_delimiter, index_col=args.csv_index_col
-        )
 
     # Configure train and eval splits
     mod_with_path = None  # check arbitrary modality for ids
@@ -1132,23 +1034,6 @@ def train_one_epoch(
             device, dtype=torch.float32, non_blocking=True
         )
 
-        # Sample a uniformly random timestep for each image
-        timesteps = torch.randint(
-            0,
-            unwrap_model(model).noise_scheduler.config.num_train_timesteps,
-            (target_distribution.shape[0],),
-        ).long()
-
-        # Sample noise that we'll add to the images
-        noise = torch.randn(target_distribution.shape).to(device, non_blocking=True)
-
-        # Add noise to the clean images according to the noise magnitude at each timestep
-        noisy_images = (
-            unwrap_model(model)
-            .noise_scheduler.add_noise(target_distribution, noise, timesteps)
-            .float()  # was producing float64 noisy images for some reason
-        )
-
         # We're implicitly setting the prediction type to "sample" (i.e., x0) here
         target = target_distribution  # could try predicting the noise or velocity later
 
@@ -1361,26 +1246,7 @@ def eval_standard(
         target_distribution = x["target_distribution"].to(
             device, dtype=torch.float32, non_blocking=True
         )
-
-        # Sample a uniformly random timestep for each image
-        timesteps = torch.randint(
-            0,
-            unwrap_model(model).noise_scheduler.config.num_train_timesteps,
-            (target_distribution.shape[0],),
-        ).long()
-
-        # Sample noise that we'll add to the images
-        noise = torch.randn(target_distribution.shape).to(device, non_blocking=True)
-
-        # Add noise to the clean images according to the noise magnitude at each timestep
-        noisy_images = (
-            unwrap_model(model)
-            .noise_scheduler.add_noise(target_distribution, noise, timesteps)
-            .float()  # was producing float64 noisy images for some reason
-        )
-
-        # We're implicitly setting the prediction type to "sample" (i.e., x0) here
-        target = target_distribution  # could try predicting the noise or velocity later
+        target = target_distribution
 
         with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
             logits = model(noisy_images, timesteps, mod_dict)
@@ -1403,9 +1269,6 @@ def eval_metrics(
     data_loader: Iterable,
     device: Union[torch.device, str],
     cond_domains: List[str],
-    noise_schedule: SchedulerMixin,
-    num_diffusion_steps: int,
-    cfg_scale: float = 0.0,
     dtype: torch.dtype = torch.float16,
     header: str = "[Eval] ",
     compute_on_cpu: bool = False,
@@ -1418,9 +1281,6 @@ def eval_metrics(
         data_loader: Validation set data loader.
         device: Device to evaluate on.
         cond_domains: List of conditioning domains.
-        noise_schedule: Noise schedule to use for diffusion.
-        num_diffusion_steps: Number of diffusion steps to use for eval.
-        cfg_scale: Classifier-free guidance scale.
         dtype: Data type for mixed precision inference.
         header: The prefix (but includes a space after), for wandb logging.
         compute_on_cpu: Whether to compute torchmetrics on CPU.
@@ -1461,15 +1321,13 @@ def eval_metrics(
             if mod in cond_domains
         }
 
+        spatial_input = None
+        seq_input = None
+        spatial_mask = None
+
         # Autoencode the images
         with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
-            logits = unwrap_model(model).generate(
-                cond_mod_dict=mod_dict,
-                scheduler=noise_schedule,
-                timesteps=num_diffusion_steps,
-                cfg_scale=cfg_scale,
-                image_size=tuple(x["target_distribution"].shape[-2:]),
-            )
+            logits = unwrap_model(model)(spatial_input, seq_input, spatial_mask)
 
         target_distribution = x["target_distribution"].to(
             device, dtype=torch.float32, non_blocking=True
@@ -1596,6 +1454,10 @@ def spatial_softmax(x):
     # Flatten spatial dims then apply softmax then reshape back
     x = F.softmax(x.contiguous().flatten(-2), dim=-1).view_as(x)
     return x
+
+
+def mae_loss(logits, target):  # TODO: implement
+    pass
 
 
 def distance_weighted_loss(

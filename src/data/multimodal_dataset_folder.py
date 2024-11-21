@@ -14,21 +14,11 @@
 import os
 import os.path
 import pickle
-import random
-from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
-
 import numpy as np
-import pandas as pd
-from tokenizers import Tokenizer
 import torch
 from torchvision.datasets.vision import VisionDataset
-
-from src.data.modality_transforms import (
-    AbstractTransform,
-    DepthTransform,
-    get_modality_prefix,
-)
+from src.data.modality_transforms import AbstractTransform
 
 IMG_EXTENSIONS = (
     ".jpg",
@@ -136,17 +126,14 @@ class MultiModalDatasetFolder(VisionDataset):
     Args:
         root (string): Root directory path.
         modalities (list): List of modalities as strings
-        modality_paths (dict): Dict of paths to modalities
         modality_transforms (dict): Dict of transforms for each modality
-        modalities_info (dict): Dict of information for each modality
+        modality_info (dict): Dict of information for each modality
+        modality_paths (dict): Dict of paths to modalities
         valid_ids (list, optional): List of valid ids to load. If None, all ids are loaded.
         transform (callable, optional): A function/transform that takes in
             a sample and returns a transformed version.
             E.g, ``transforms.RandomCrop`` for images.
         target_transform (callable, optional): A function/transform that takes
-        tokenizer (Tokenizer, optional): Tokenizer to use for tokenizing sequential data.
-            in the target and transforms it.
-        data_df (pd.DataFrame, optional): Dataframe containing data for modalities that require it.
         is_valid_file (callable, optional): A function that takes path of a file
             and check if the file is a valid file (used to check of corrupt logs)
             both extensions and is_valid_file should not be passed.
@@ -165,9 +152,6 @@ class MultiModalDatasetFolder(VisionDataset):
         valid_ids: Optional[List[str]] = None,
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
-        tokenizer: Optional[Tokenizer] = None,
-        max_text_tok_length: Optional[int] = None,
-        data_df: Optional[pd.DataFrame] = None,
         is_valid_file: Optional[Callable[[str], bool]] = None,
         max_samples: Optional[int] = None,
         pre_shuffle: bool = False,
@@ -175,74 +159,50 @@ class MultiModalDatasetFolder(VisionDataset):
     ) -> None:
         super().__init__(root, transform=transform, target_transform=target_transform)
 
-        # Masks aren't loaded as a modality, so we remove them from the modalities
-        self.needs_mask = "mask_valid" in modalities
-        self.modalities = [mod for mod in modalities if mod != "mask_valid"]
-
-        self.modality_paths = {} if modality_paths is None else modality_paths
-        for mod in self.modalities:
-            # Look for a path in the modality_info or use the modality prefix
-            if mod not in self.modality_paths:
-                if "path" in modality_info[mod]:
-                    self.modality_paths[mod] = modality_info[mod]["path"]
-                else:
-                    self.modality_paths[mod] = get_modality_prefix(mod)
-
-            # Check if a dataframe is needed
-            need_df = self.modality_paths[mod] is None
-            if need_df and data_df is None:
-                raise ValueError(f"A dataframe must be supplied for modality: {mod}")
-
-        self.data_df = data_df
         self.modality_transforms = modality_transforms
         self.modality_info = modality_info
         self.return_path = return_path
-
+        self.modalities = modalities
+        self.modality_paths = {} if modality_paths is None else modality_paths
         for mod in self.modalities:
-            transform = self.modality_transforms[get_modality_prefix(mod)]
-            if hasattr(transform, "set_tokenizer"):
-                if tokenizer is None or max_text_tok_length is None:
-                    raise ValueError(
-                        "tokenizer and max_token_length must be provided if a modality is text-tokenized."
-                    )
-                transform.set_tokenizer(tokenizer, max_text_tok_length)
+            # Look for a path in the modality_info or use the modality prefix
+            if modality_info[mod].get("path", None) is None:
+                if len(modalities) == 1:
+                    raise ValueError("Can't have a single modality and no path")
+                self.modality_paths[mod] = None
+            elif mod not in self.modality_paths:
+                modality_paths[mod] = mod
 
-        not_none_path = None  # find any modality with path not None
-        for path in self.modality_paths.values():
-            if path is not None:
-                not_none_path = path
-                break
-
-        if not_none_path:
-            _, class_to_idx = self._find_classes(os.path.join(root, not_none_path))
-        # else: there are no paths at all, (i.e., we're only using dataframe data)
+        _, class_to_idx = self._find_classes(
+            os.path.join(root, list(self.modality_paths.values())[0])
+        )
 
         extensions = UNIFIED_EXTENSIONS if is_valid_file is None else None
 
-        if valid_ids is not None:
-            # take advantage of O(1) lookup using a dict instead of a list
-            valid_ids = {id: 1 for id in valid_ids}
+        uid_set = set(valid_ids) if valid_ids is not None else None
+        if len(uid_set) != len(valid_ids):
+            raise ValueError("valid_ids contains duplicates")
 
         samples = {
             mod: (
-                make_dataset(
-                    os.path.join(self.root, f"{self.modality_paths[mod]}"),
-                    class_to_idx,
-                    extensions,
-                    valid_ids,
-                    is_valid_file,
+                (
+                    make_dataset(
+                        os.path.join(self.root, f"{self.modality_paths[mod]}"),
+                        class_to_idx,  # all modalities should have same class(es)
+                        extensions,
+                        uid_set,
+                        is_valid_file,
+                    )
                 )
-                if self.modality_paths[mod] is not None  # else mod comes from dataframe
-                else [
-                    (uid, 0)  # use uid instead of a path
-                    for uid in data_df.index
-                    if valid_ids is None or uid in valid_ids
-                ]
+                if self.modality_paths[mod] is not None
+                else []
             )
             for mod in self.modalities
         }
 
         for mod, mod_samples in samples.items():
+            if self.modality_paths[mod] is None:
+                continue
             if len(mod_samples) == 0:
                 msg = "Found 0 valid files in subfolders of: {}\n".format(
                     os.path.join(self.root, f"{self.modality_paths[mod]}")
@@ -302,93 +262,26 @@ class MultiModalDatasetFolder(VisionDataset):
             dict: maps modality names to sample tensors
         """
         sample_dict = {}
-        missing_data_mods = []
-        any_has_path = False  # to keep track of whether any modality has a path
-        uid = None  # for when random crop needs to know the uid (using a parameter csv)
         for mod in self.modalities:
             if self.modality_paths[mod] is None:
-                uid, _ = self.samples[mod][index]
-                data = self.data_df.loc[uid]
-                sample = self.modality_transforms[get_modality_prefix(mod)].load(
-                    data, uid
-                )
-            else:
-                any_has_path = True
-                path, _ = self.samples[mod][index]
-                uid = path.split("/")[-1].split(".")[0]
-                sample = self.modality_transforms[get_modality_prefix(mod)].load(path)
-
+                sample = self.modality_transforms[mod].load()
+                sample_dict[mod] = sample
+                continue
+            path, _ = self.samples[mod][index]
+            sample = self.modality_transforms[mod].load(path)
             sample_dict[mod] = sample
-
-            if "no_data_value" in self.modality_info[mod]:
-                missing_data_mods.append(mod)
 
         if self.transform is not None:
             # Applies the UnifiedDataTransform which augments the data (as well as pre and
             # post processes it)
-            sample_dict = self.transform(sample_dict, uid)
+            sample_dict = self.transform(sample_dict)
 
         if self.return_path:
-            if not any_has_path:  # all mods are from dataframe only
-                is_labeled = "unlabeled" not in uid.lower()
-                sample_dict["class_id"] = (
-                    "labeled" if is_labeled else "unlabeled"
-                ) + "_sar"
-                sample_dict["file_name"] = uid
-            else:
-                class_id, file_name = self.get_class_and_file(path)
-                sample_dict["class_id"] = class_id
-                sample_dict["file_name"] = file_name
-
-        # If any modalities require a mask, compute it (pretty much just rgb and depth)
-        if len(missing_data_mods) > 0:
-            if not self.needs_mask:
-                raise ValueError(
-                    f"No mask_value is set but some modalities require a mask: {missing_data_mods}"
-                )
-            mods_list = [
-                (mod, self.modality_info[mod]["no_data_value"], sample_dict[mod])
-                for mod in missing_data_mods
-            ]
-            sample_dict["mask_valid"] = compute_mask(mods_list)
-
-        # Normalizing needs to be done after the mask is created otherwise the no_data_value might be
-        # obscured for the mask
-        for mod in self.modalities:
-            key = get_modality_prefix(mod)
-            norm_name = f"{key}_tensor_norm"
-            if hasattr(self.modality_transforms[key], norm_name):
-                sample_dict[mod] = getattr(self.modality_transforms[key], norm_name)(
-                    sample_dict[mod]
-                )
+            class_id, file_name = self.get_class_and_file(path)
+            sample_dict["class_id"] = class_id
+            sample_dict["file_name"] = file_name
 
         return sample_dict
 
     def __len__(self) -> int:
         return len(list(self.samples.values())[0])
-
-
-def compute_mask(mods_list: List[Tuple[str, float, torch.Tensor]]):
-    """Compute a mask to remove no-data values, nans/infs, and depth artifacts for an aligned input set of images.
-    Args:
-        mods_list: List of tuples containing the modality name, no_data_value, and the image tensor (in that order).
-
-    Returns:
-        torch.Tensor: A mask tensor in the same shape as the input images with True to keep, False to remove.
-    """
-    channel_dim = 0
-    H, W = mods_list[0][2].shape[-2:]
-    mask = torch.ones(1, H, W, dtype=torch.bool)  # True to keep, False to remove
-
-    # format of the mods_list: (mod_name, no_data_value, sample) where sample is image tensor
-    for _, no_data_value, sample in mods_list:
-        # if any (along channel_dim) IS a valid value (i.e., not no_data_value), keep it
-        no_data_mask = (sample != no_data_value).any(dim=channel_dim, keepdim=True)
-
-        # all (along channel_dim) must be finite values
-        nan_mask = np.isfinite(sample).all(dim=channel_dim, keepdim=True)
-
-        # True to keep, False to remove
-        mask = mask.logical_and(no_data_mask).logical_and(nan_mask)
-
-    return mask

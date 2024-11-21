@@ -28,7 +28,7 @@ class AbstractImageAugmenter(ABC):
         pass
 
 
-class CropImageAugmenter(AbstractImageAugmenter):
+class CropImageAugmenter(AbstractImageAugmenter): # TODO: need to work for both finetuning and pretraining
 
     def __init__(
         self,
@@ -36,47 +36,35 @@ class CropImageAugmenter(AbstractImageAugmenter):
         crop_std=1.0,
         hflip=None,
         vflip=None,
-        parameter_csv=None,
     ):
         self.target_size = to_2tuple(target_size)
         self.crop_std = crop_std
         self.hflip = hflip
         self.vflip = vflip
-        self.parameter_csv = parameter_csv
 
-    def __call__(self, uid=None):
-        if self.parameter_csv is None:
-            # center distribution at center of valid crop range
-            start_idx, end_idx = 0, self.target_size[0] - 1
-            mean = (start_idx + end_idx) / 2
+    def __call__(self):
+        # center distribution at center of valid crop range
+        start_idx, end_idx = 0, self.target_size[0] - 1
+        mean = (start_idx + end_idx) / 2
 
-            # compute bounds of truncated normal distribution in stds
-            lower_std = (start_idx - mean) / self.crop_std
-            upper_std = (end_idx - mean) / self.crop_std
+        # compute bounds of truncated normal distribution in stds
+        lower_std = (start_idx - mean) / self.crop_std
+        upper_std = (end_idx - mean) / self.crop_std
 
-            # sample truncated normal distribution and round to discretize it
-            crop_row = round(
-                truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
-            )
-            crop_col = round(
-                truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
-            )
-            hflip = random.random() < self.hflip if self.hflip is not None else False
-            vflip = random.random() < self.vflip if self.vflip is not None else False
-        else:
-            if uid is None:
-                raise ValueError("uid must be provided when using a parameter csv")
-            csv_row = self.parameter_csv.loc[uid]
-
-            crop_row = csv_row["crop_row"]
-            crop_col = csv_row["crop_col"]
-            hflip = csv_row["hflip"]
-            vflip = csv_row["vflip"]
+        # sample truncated normal distribution and round to discretize it
+        crop_row = round(
+            truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
+        )
+        crop_col = round(
+            truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
+        )
+        hflip = random.random() < self.hflip if self.hflip is not None else False
+        vflip = random.random() < self.vflip if self.vflip is not None else False
 
         crop_coords = (crop_row, crop_col, *self.target_size)
         flip = (hflip, vflip)
 
-        return crop_coords, flip, None, self.target_size, None, None
+        return crop_coords, flip, None, self.target_size, None
 
 
 class EmptyAugmenter(AbstractImageAugmenter):
@@ -84,24 +72,4 @@ class EmptyAugmenter(AbstractImageAugmenter):
         pass
 
     def __call__(self, uid=None):
-        return None, None, None, None, None, None
-
-
-class RandomRotationImageAugmenter(AbstractImageAugmenter):
-    def __init__(self, near_orthogonal=False):
-        self.near_orthogonal = near_orthogonal
-
-    def get_rotation_angle(self):
-        # rotate image near orthogonally i.e., close to a multiple of 90 degrees
-        if self.near_orthogonal:
-            rotation = np.random.choice([0, 90, 180, 270])
-            offset = np.random.normal(scale=10)  # the std here is arbitrary
-            angle = rotation + offset
-        else:
-            angle = np.random.rand() * 360
-
-        return angle
-
-    def __call__(self, uid=None):
-        rotation_angle = self.get_rotation_angle()
-        return None, None, None, None, None, rotation_angle
+        return None, None, None, None, None
