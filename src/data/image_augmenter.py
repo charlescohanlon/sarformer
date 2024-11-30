@@ -28,40 +28,57 @@ class AbstractImageAugmenter(ABC):
         pass
 
 
-class CropImageAugmenter(AbstractImageAugmenter): # TODO: need to work for both finetuning and pretraining
+class CropImageAugmenter(AbstractImageAugmenter):
 
     def __init__(
         self,
+        img_size,
+        eff_img_size=None,
         target_size=224,
-        crop_std=1.0,
-        hflip=None,
-        vflip=None,
+        random_crop_std=1e12,
+        hflip=0.0,
+        vflip=0.0,
     ):
-        self.target_size = to_2tuple(target_size)
-        self.crop_std = crop_std
+        """
+        Args:
+            img_size: full size of the input image
+            eff_img_size: size of the effective image. Equivalent to taking a center crop
+                of full image before cropping. If None, defaults to img_size.
+            target_size: size of the output image after cropping
+            random_crop_std: standard deviation of the normal distribution used for random cropping.
+                Default of 1e12 results in near uniform sampling.
+            hflip: probability of horizontal flipping
+            vflip: probability of vertical flipping
+        """
+        self.img_size = img_size
+        self.eff_img_size = img_size if eff_img_size is None else eff_img_size
+        self.target_size = target_size
+        self.crop_std = random_crop_std
         self.hflip = hflip
         self.vflip = vflip
 
     def __call__(self):
+        # compute valid crop range [start, end]
+        start = (self.img_size - self.eff_img_size) // 2
+        end = self.img_size - start - self.target_size
+
         # center distribution at center of valid crop range
-        start_idx, end_idx = 0, self.target_size[0] - 1
-        mean = (start_idx + end_idx) / 2
+        start = (self.img_size - self.eff_img_size) // 2
+        end = self.img_size - start - self.target_size
+
+        mean = (start + end) / 2
 
         # compute bounds of truncated normal distribution in stds
-        lower_std = (start_idx - mean) / self.crop_std
-        upper_std = (end_idx - mean) / self.crop_std
+        lower_std = (start - mean) / self.crop_std
+        upper_std = (end - mean) / self.crop_std
 
         # sample truncated normal distribution and round to discretize it
-        crop_row = round(
-            truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
-        )
-        crop_col = round(
-            truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std)
-        )
-        hflip = random.random() < self.hflip if self.hflip is not None else False
-        vflip = random.random() < self.vflip if self.vflip is not None else False
+        top = round(truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std))
+        left = round(truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std))
+        hflip = random.random() < self.hflip
+        vflip = random.random() < self.vflip
 
-        crop_coords = (crop_row, crop_col, *self.target_size)
+        crop_coords = (top, left)
         flip = (hflip, vflip)
 
         return crop_coords, flip, None, self.target_size, None

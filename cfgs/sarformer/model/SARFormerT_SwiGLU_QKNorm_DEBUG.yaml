@@ -2,7 +2,7 @@ run_name: auto
 
 # Model
 model: sarformer_t_swiglu_qknorm
-cond_domains: ['tok_rgb@224', 'tok_depth@224', 'caption', 'structured_data']
+cond_domains: ['tok_rgb@224', 'tok_depth@224', 'caption', 'structured']
 input_size: 224 # training script needs this for math
 
 # Diffusion

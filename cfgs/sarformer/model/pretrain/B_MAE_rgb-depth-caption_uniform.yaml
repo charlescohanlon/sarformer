@@ -1,17 +1,14 @@
 run_name: auto
 
 # Model
-model: sarformer_t_swiglu_qknorm
-cond_domains: ['tok_rgb@224', 'tok_depth@224', 'caption', 'structured']
-input_size: 224 # training script needs this for math
-
-# Diffusion
-num_train_timesteps: 1000 # number of diffusion steps during training
-beta_schedule: linear # noise schedule
-zero_terminal_snr: True
-cfg_scale: 0.0 # No cfg
+model: sarformer_b_mae
+cond_domains: ["rgb", "depth", "caption"]
+target_size: 224
 
 # Train
+objective: mae
+mask_proportion: 0.6
+patch_size: 16
 dtype: bf16 # fp32, fp16 or bf16
 warmup_epochs: 100
 epochs: 550
@@ -25,34 +22,28 @@ save_ckpt_freq: 25 # in epochs
 weight_decay: 0.05 # the default
 lr_and_wd_scheduler: cosine
 
+# Augmentation
+full_img_size: 673
+crop_std: 1e16 # for near uniform random crop sampling
+hflip: 0.5
+vflip: 0.5
+
 # Eval
 eval_freq: 25
 eval_metrics_freq: 25
 eval_image_log_freq: 25
 num_eval_metrics_samples: 96 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 9
-eval_noise_schedule: DDIMScheduler
-num_eval_timesteps: 50
 dist_eval: True
 data_path: '/scratch/bdej/cohanlon/data/train'
 eval_data_path: '/scratch/bdej/cohanlon/data/eval'
-
-# Loss
-loss_type: bce
-distance_type: euclidean
-
-# Data
-text_tokenizer_path: 'fourm/utils/tokenizer/trained/tokenizer_inc_nonUS_lower.json'
-data_csv_path: '/scratch/bdej/cohanlon/data/labeled_sar_data.csv'
-csv_delimiter: '@'
-csv_index_col: uid
 
 # Logging
 log_wandb: True
 wandb_project: model
 wandb_entity: sarformer
 wandb_run_name: auto
-output_dir: 'checkpoints/sarformer/auto'
+output_dir: '/scratch/bdej/cohanlon/checkpoints/sarformer/auto'
 show_user_warnings: False
 compute_grad_norm: True
 

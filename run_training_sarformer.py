@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+from ast import mod
 import datetime
 import json
 from einops import repeat
@@ -23,9 +24,10 @@ import time
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Iterable, List, Optional, Dict, Union, Tuple
+from typing import Iterable, List, Optional, Dict, Union, Tuple, Callable
 import gc
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -42,12 +44,18 @@ from torchmetrics.image import (
     PeakSignalNoiseRatio,
     MultiScaleStructuralSimilarityIndexMeasure,
 )
-from src.data.image_augmenter import EmptyAugmenter
+from src.data import modality_transforms
+from src.data.image_augmenter import CropImageAugmenter, EmptyAugmenter
 from src.data.multimodal_dataset_folder import MultiModalDatasetFolder
 import src.utils as utils
-from src.data.modality_transforms import UnifiedDataTransform
+from src.data.modality_transforms import (
+    MaskTransform,
+    TargetDistributionTransform,
+    UnifiedDataTransform,
+)
 from src.data.modality_info import MODALITY_INFO, MODALITY_TRANSFORMS
 from src.utils import create_model
+from src.utils.misc import destandardize
 from src.utils.optim_factory import create_optimizer
 from src.utils import NativeScalerWithGradNormCount as NativeScaler
 
@@ -80,10 +88,28 @@ def get_args():
         "Effective batch size is batch_size * accum_iter * # gpus",
     )
     parser.add_argument(
-        "--input_size",
+        "--full_img_size",
+        default=673,
+        type=int,
+        help="The full image size for image-like modalities",
+    )
+    parser.add_argument(
+        "--eff_img_size",
         default=None,
         type=Optional[int],
-        help="The input size for image-like modalities",
+        help="The effective image size for image-like modalities, (default: full_img_size)",
+    )
+    parser.add_argument(
+        "--target_size",
+        default=224,
+        type=int,
+        help="The crop size for image-like modalities",
+    )
+    parser.add_argument(
+        "--mask_proportion",
+        default=0.6,
+        type=float,
+        help="The proportion of the image to mask for image-like modalities",
     )
     parser.add_argument(
         "--patch_size",
@@ -126,7 +152,7 @@ def get_args():
     parser.add_argument(
         "--cond_domains",
         nargs="+",
-        default=["rgb", "depth", "caption", "structured_data"],
+        default=["rgb", "depth", "caption", "structured"],
         help="Input modalities (default: %(default)s)",
     )
 
@@ -144,6 +170,32 @@ def get_args():
         choices=["euclidean", "manhatten", "none"],
         default="euclidean",
         help="The distance used for weighting pixel terms in the loss (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--objective",
+        type=str,
+        choices=["mae", "lpl", "lost-person location"],
+        help="Objective to train the model on (default: %(default)s)",
+    )
+
+    # Augmentation
+    parser.add_argument(
+        "--crop_std",
+        default="1e16",
+        type=str,  # converted to float
+        help="Standard deviation of random crop Gaussian sampling (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--hflip",
+        default=0.0,
+        type=float,
+        help="Probability of performing a random horizontal flip augmentation (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--vflip",
+        default=0.0,
+        type=float,
+        help="Probability of performing a random vertical flip augmentation (default: %(default)s)",
     )
 
     # Weight init / fine-tune parameters
@@ -238,19 +290,6 @@ def get_args():
         help="Epochs to cool down LR, if scheduler supports (default: %(default)s)",
     )
 
-    # Text tokenizer
-    parser.add_argument(
-        "--text_tokenizer_path",
-        default=None,
-        help="Path to trained text tokenizer",
-    )
-
-    # Data
-    parser.add_argument(
-        "--no_use_valid_ids", action="store_false", dest="use_valid_ids"
-    )
-    parser.set_defaults(use_valid_ids=True)
-
     # Eval
     parser.add_argument(
         "--eval_data_path",
@@ -310,12 +349,6 @@ def get_args():
     )
 
     # Misc.
-    parser.add_argument(
-        "--objective",
-        type=str,
-        choices=["mae", "lost-person location"],
-        help="Objective to train the model on (default: %(default)s)",
-    )
     parser.add_argument(
         "--output_dir", default="", help="Path where to save, empty for no saving"
     )
@@ -389,105 +422,50 @@ def get_args():
     return args
 
 
-def setup_modality_info(args):
-    # Global modality info
-    modality_info = MODALITY_INFO
-
-    # Max tokens
-    for mod in modality_info:
-        if "type" in modality_info and modality_info[mod]["type"] == "img":
-            image_size = modality_info[mod].get("input_size", args.input_size)
-            patch_size = modality_info[mod].get("patch_size", args.patch_size)
-            if image_size is None or patch_size is None:
-                raise ValueError(
-                    f"Could not find image size and patch size for modality {mod}"
-                )
-            num_patches = (image_size // patch_size) ** 2
-            modality_info[mod]["max_tokens"] = num_patches
-
-    return modality_info
-
-
 def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
 
     # Set up shared modality info
-    modality_info = setup_modality_info(args)
+    modality_info = {mod: MODALITY_INFO[mod] for mod in args.all_domains}
+    modality_transforms = MODALITY_TRANSFORMS
+    if "target_distribution" in args.all_domains:
+        modality_transforms["target_distribution"] = TargetDistributionTransform(
+            img_size=args.full_img_size
+        )
+    if "mask" in args.all_domains:
+        modality_transforms["mask"] = MaskTransform(
+            mask_size=args.target_size,
+            mask_proportion=args.mask_proportion,
+            patch_size=args.patch_size,
+        )
 
-    # Structured data and text
-    data_df = None
+    # use full_img_size if eff_img_size is not specified
+    if args.eff_img_size is None:
+        args.eff_img_size = args.full_img_size
 
-    # Configure train and eval splits
-    mod_with_path = None  # check arbitrary modality for ids
-    for d in modality_info.values():
-        if d.get("path", None) is not None:
-            mod_with_path = d["path"]
-            break
+    # to allow --crop_std to be scientific notation
+    args.crop_std = float(args.crop_std)
 
-    train_ids, eval_ids = None, None
-    if mod_with_path is None:
-        # If no mods have a path we're only using mods that come from csv so provide splits by file
-        if not args.eval_only:
-            if args.train_ids_path is None:
-                raise ValueError(
-                    "Must provide train_ids_path for csv-only mods train split"
-                )
-            with open(args.train_ids_path, "r") as f:
-                train_ids = f.read().splitlines()
-
-        if args.eval_data_path:
-            if args.eval_ids_path is None:
-                raise ValueError(
-                    "Must provide eval_ids_path for csv-only mods eval split"
-                )
-            with open(args.eval_ids_path, "r") as f:
-                eval_ids = f.read().splitlines()
-    else:
-        # Otherwise, use intersections of csv and file (if a csv is provided) or just file-based splits
-        # This assumes all file-based modalities have the same split ids
-        if not args.eval_only:
-            train_mod_path = os.path.join(args.data_path, mod_with_path)
-            # pick arbitrary class to look at
-            cls = os.listdir(train_mod_path)[0]
-            train_cls_uids = [
-                n.split(".")[0] for n in os.listdir(os.path.join(train_mod_path, cls))
-            ]
-            if args.data_csv_path:
-                train_ids = list(set(train_cls_uids).intersection(set(data_df.index)))
-            else:
-                train_ids = train_cls_uids
-
-        if args.eval_data_path:
-            eval_mod_path = os.path.join(args.eval_data_path, mod_with_path)
-            cls = os.listdir(eval_mod_path)[0]
-            eval_cls_uids = [
-                n.split(".")[0] for n in os.listdir(os.path.join(eval_mod_path, cls))
-            ]
-            if args.data_csv_path:
-                eval_ids = list(set(eval_cls_uids).intersection(set(data_df.index)))
-            else:
-                eval_ids = eval_cls_uids
-
-    if train_ids is not None and eval_ids is not None:
-        if len(set(train_ids).intersection(set(eval_ids))) != 0:
-            raise ValueError(
-                "Train and eval splits have overlapping indices. Please ensure they are disjoint."
-            )
+    # need to return path to get the rgb counterpart for overlaid images
+    using_overlaid_imgs = args.objective == "lpl"
 
     transform = UnifiedDataTransform(
-        transforms_dict=MODALITY_TRANSFORMS,
-        image_augmenter=EmptyAugmenter(),
+        transforms_dict=modality_transforms,
+        image_augmenter=CropImageAugmenter(
+            img_size=args.full_img_size,
+            eff_img_size=args.eff_img_size,
+            target_size=args.target_size,
+            random_crop_std=args.crop_std,
+            hflip=args.hflip,
+            vflip=args.vflip,
+        ),
     )
     if not args.eval_only:
         dataset_train = MultiModalDatasetFolder(
             root=args.data_path,
             modalities=args.all_domains,
-            modality_transforms=MODALITY_TRANSFORMS,
+            modality_transforms=modality_transforms,
             modality_info=modality_info,
-            valid_ids=train_ids,
             transform=transform,
-            tokenizer=text_tokenizer,
-            max_text_tok_length=max_text_tok_len,
-            data_df=data_df,
         )
         print("dataset_train size = %d" % len(dataset_train))
 
@@ -512,7 +490,7 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             drop_last=True,
         )
     else:
-        print("Warning: No training data loader provided.")
+        print("Warning: No training data provided.")
         num_training_steps_per_epoch = 0
         data_loader_train = None
 
@@ -520,15 +498,13 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
         dataset_val = MultiModalDatasetFolder(
             root=args.eval_data_path,
             modalities=args.all_domains,
-            modality_transforms=MODALITY_TRANSFORMS,
+            modality_transforms=modality_transforms,
             modality_info=modality_info,
-            valid_ids=eval_ids,
             transform=transform,
-            tokenizer=text_tokenizer,
-            max_text_tok_length=max_text_tok_len,
-            data_df=data_df,
         )
         print("dataset_val size = %d" % len(dataset_val))
+        if len(dataset_val) == 0:
+            raise ValueError("No evaluation data found.")
         if args.dist_eval:
             if len(dataset_val) % num_tasks != 0:
                 print(
@@ -555,13 +531,9 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             dataset_metrics = MultiModalDatasetFolder(
                 root=args.eval_data_path,
                 modalities=args.all_domains,
-                modality_transforms=MODALITY_TRANSFORMS,
+                modality_transforms=modality_transforms,
                 modality_info=modality_info,
-                valid_ids=eval_ids,
                 transform=transform,
-                tokenizer=text_tokenizer,
-                max_text_tok_length=max_text_tok_len,
-                data_df=data_df,
                 max_samples=args.num_eval_metrics_samples,
                 pre_shuffle=True,
             )
@@ -596,16 +568,12 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             dataset_image_log = MultiModalDatasetFolder(
                 root=args.eval_data_path,
                 modalities=args.all_domains,
-                modality_transforms=MODALITY_TRANSFORMS,
+                modality_transforms=modality_transforms,
                 modality_info=modality_info,
-                valid_ids=eval_ids,
                 transform=transform,
-                tokenizer=text_tokenizer,
-                max_text_tok_length=max_text_tok_len,
-                data_df=data_df,
                 max_samples=args.num_logged_images,
                 pre_shuffle=True,
-                return_path=True,  # needed for overlaid images
+                return_path=using_overlaid_imgs,
             )
             # No dist eval, we only run it on the main process
             sampler_image_log = SequentialSampler(dataset_image_log)
@@ -639,29 +607,9 @@ def get_model(args, modality_info):
     """Creates and returns model from arguments"""
     print(f"Creating model: {args.model} conditioned on {args.cond_domains}")
 
-    encoder_embeddings = {}
-    for mod in args.cond_domains:
-        info = modality_info[mod]
-        if info.get("encoder_embedding", None) is not None:
-            if info["type"] == "img":
-                image_size = info.get("input_size", args.input_size)
-                patch_size = info.get("patch_size", args.patch_size)
-                encoder_embeddings[mod] = info["encoder_embedding"](
-                    patch_size=patch_size, image_size=image_size
-                )
-            else:
-                encoder_embeddings[mod] = info["encoder_embedding"]()
-        else:
-            raise ValueError(f"Encoder embedding not found for modality {mod}")
-
     model = create_model(
         args.model,
-        encoder_embeddings=encoder_embeddings,
         modality_info=modality_info,
-        num_train_timesteps=args.num_train_timesteps,
-        beta_schedule=args.beta_schedule,
-        thresholding=args.thresholding,
-        zero_terminal_snr=args.zero_terminal_snr,
     )
 
     return model
@@ -695,8 +643,23 @@ def main(args):
     global_rank = utils.get_rank()
     sampler_rank = global_rank
 
+    if args.objective == "lost-person location":  # equate acroynm to full name
+        args.objective = "lpl"
+
+    # Domains
+    args.all_domains = args.cond_domains
+    if args.objective == "lpl":
+        args.all_domains.append("target_distribution")
+        loss_fn = lambda logits, target: distance_weighted_loss(
+            logits, target, args.loss_type, args.distance_type
+        )
+    elif args.objective == "mae":
+        args.all_domains.append("mask")
+        loss_fn = mae_loss
+    else:
+        raise ValueError(f"Objective {args.objective} not implemented.")
+
     # Data
-    args.all_domains = args.cond_domains + ["target_distribution"]
     (
         modality_info,
         num_training_steps_per_epoch,
@@ -721,12 +684,6 @@ def main(args):
     # Starting from pre-trained model
     if args.finetune:
         checkpoint = torch.load(args.finetune, map_location="cpu")
-
-        # Remove pos_emb
-        checkpoint["model"] = {
-            k: v for k, v in checkpoint["model"].items() if ".pos_emb" not in k
-        }
-
         msg = model.load_state_dict(checkpoint["model"], strict=False)
         print(msg)
 
@@ -822,27 +779,6 @@ def main(args):
         loss_scaler=loss_scaler,
     )
 
-    # Evaluation noise scheduler
-    if args.eval_noise_schedule in ["DDPMScheduler", "DDIMScheduler"]:
-        eval_noise_schedule = getattr(sys.modules[__name__], args.eval_noise_schedule)(
-            num_train_timesteps=args.num_eval_timesteps,
-            beta_schedule=args.beta_schedule,
-            prediction_type="sample",  # Only type supported atm
-            thresholding=args.thresholding,
-            clip_sample=False,  # Doesn't make sense for our use case
-            zero_terminal_snr=args.zero_terminal_snr,
-        )
-    elif args.eval_noise_schedule is not None:
-        eval_noise_schedule = getattr(diffusers_schedulers, args.eval_noise_schedule)(
-            num_train_timesteps=args.num_eval_timesteps,
-            beta_schedule=args.beta_schedule,
-            prediction_type="sample",  # Only type supported atm
-            thresholding=args.thresholding,
-            clip_sample=False,  # Doesn't make sense for our use case
-        )
-    else:
-        eval_noise_schedule = None
-
     # Eval (trained model)
     if args.eval_only:
         if data_loader_val is None:
@@ -853,20 +789,16 @@ def main(args):
             launch_eval_image_log=True,
             model=model,
             device=device,
-            cond_domains=args.cond_domains,
-            eval_noise_schedule=eval_noise_schedule,
-            num_eval_timesteps=args.num_eval_timesteps,
             eval_data_root=args.eval_data_path,
             dtype=dtype,
+            loss_fn=loss_fn,
             data_loader_val=data_loader_val,
             data_loader_metrics=data_loader_metrics,
             data_loader_image_log=data_loader_image_log,
             num_logged_images=args.num_logged_images,
-            loss_type=args.loss_type,
-            distance_type=args.distance_type,
-            cfg_scale=args.cfg_scale,
             log_writer=log_writer,
             compute_metrics_on_cpu=device.type == "cpu",
+            objective=args.objective,
         )
         if log_writer is not None:
             log_writer.update(eval_stats)
@@ -884,8 +816,8 @@ def main(args):
             model=model,
             data_loader=data_loader_train,
             optimizer=optimizer,
-            loss_type=args.loss_type,
-            distance_type=args.distance_type,
+            loss_fn=loss_fn,
+            objective=args.objective,
             device=device,
             epoch=epoch,
             loss_scaler=loss_scaler,
@@ -896,7 +828,6 @@ def main(args):
             start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values,
             wd_schedule_values=wd_schedule_values,
-            cond_domains=args.cond_domains,
             dtype=dtype,
             output_dir=args.output_dir,
             compute_grad_norm=args.compute_grad_norm,
@@ -942,18 +873,16 @@ def main(args):
             launch_eval_image_log=launch_eval_image_log,
             model=model,
             device=device,
-            cond_domains=args.cond_domains,
-            eval_noise_schedule=eval_noise_schedule,
-            num_eval_timesteps=args.num_eval_timesteps,
-            dtype=dtype,
             eval_data_root=args.eval_data_path,
+            dtype=dtype,
+            loss_fn=loss_fn,
+            objective=args.objective,
             data_loader_val=data_loader_val,
             data_loader_metrics=data_loader_metrics,
             data_loader_image_log=data_loader_image_log,
             num_logged_images=args.num_logged_images,
             loss_type=args.loss_type,
             distance_type=args.distance_type,
-            cfg_scale=args.cfg_scale,
             log_writer=log_writer,
             compute_metrics_on_cpu=device.type == "cpu",
         )
@@ -977,8 +906,8 @@ def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
     optimizer: torch.optim.Optimizer,
-    loss_type: str,
-    distance_type: str,
+    loss_fn: Callable,
+    objective: str,
     device: torch.device,
     epoch: int,
     loss_scaler,
@@ -989,7 +918,6 @@ def train_one_epoch(
     start_steps=None,
     lr_schedule_values=None,
     wd_schedule_values=None,
-    cond_domains: List[str] = [],
     dtype: torch.dtype = torch.float16,
     output_dir=None,
     compute_grad_norm=True,
@@ -1024,34 +952,31 @@ def train_one_epoch(
                     ):
                         param_group["weight_decay"] = wd_schedule_values[it]
 
-        mod_dict = {
-            mod: to_device(t, device, non_blocking=True)
-            for mod, t in x.items()
-            if mod in cond_domains
-        }
-
-        target_distribution = x["target_distribution"].to(
-            device, dtype=torch.float32, non_blocking=True
-        )
-
-        # We're implicitly setting the prediction type to "sample" (i.e., x0) here
-        target = target_distribution  # could try predicting the noise or velocity later
+        spatial_input, seq_input = prep_inputs(x)
+        spatial_input = spatial_input.to(device, non_blocking=True)
+        seq_input = seq_input.to(device, non_blocking=True)
 
         # Only sync if we update grad (for accum_iter)
         # See https://muellerzr.github.io/blog/gradient_accumulation.html
         with nullcontext() if update_grad else model.no_sync():
-
             with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
-                logits = model(noisy_images, timesteps, mod_dict)
-                loss = distance_weighted_loss(logits, target, loss_type, distance_type)
+                logits = model(spatial_input, seq_input)
+
+                if objective == "lpl":
+                    target = x["target_distribution"].to(device, non_blocking=True)
+                    loss = loss_fn(logits, target)
+                elif objective == "mae":
+                    target = spatial_input
+                    mask = x["mask"].to(device, non_blocking=True)
+                    loss = loss_fn(logits, target, mask)
 
             loss_value = loss.item()
 
             if not math.isfinite(loss_value):
                 path = os.path.join(output_dir, "debug_mod_dict.pt")
-                torch.save(mod_dict, path)
+                torch.save(x, path)
                 print(f"Loss is {loss_value}, stopping training", file=sys.stderr)
-                print(f"Saved last mod_dict to {path}", file=sys.stderr)
+                print(f"Saved last batch to {path}", file=sys.stderr)
                 sys.exit(1)
 
             loss = loss / accum_iter
@@ -1069,10 +994,7 @@ def train_one_epoch(
                 optimizer.zero_grad()
 
         torch.cuda.synchronize()
-
-        # Effectively not using cache (to fit a batch size of 24)
         gc.collect()
-        torch.cuda.empty_cache()
 
         metric_logger.update(loss=loss_value)
         min_lr = 1.0
@@ -1117,18 +1039,14 @@ def launch_evals(
     launch_eval_image_log: bool,
     model: Union[nn.Module, DDP],
     device: Union[torch.device, str],
-    cond_domains: List[str],
-    eval_noise_schedule: SchedulerMixin,
-    num_eval_timesteps: int,
     eval_data_root: str,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype,
+    loss_fn: Callable,
+    objective: str,
     data_loader_val: Optional[Iterable] = None,
     data_loader_metrics: Optional[Iterable] = None,
     data_loader_image_log: Optional[Iterable] = None,
     num_logged_images: int = 9,
-    loss_type: str = "bce",
-    distance_type: str = "euclidean",
-    cfg_scale: float = 0.0,
     log_writer: Optional[utils.WandbLogger] = None,
     compute_metrics_on_cpu: bool = False,
 ) -> Dict[str, float]:
@@ -1141,18 +1059,14 @@ def launch_evals(
         launch_eval_image_log: Whether to launch image logging.
         model: Model to evaluate.
         device: Device to evaluate on.
-        cond_domains: List of conditioning domains.
-        eval_noise_schedule: Noise schedule to use for diffusion.
-        num_eval_timesteps: Number of diffusion timesteps to use for evaluation.
         eval_data_root: Root directory of evaluation data.
         dtype: Data type for mixed precision inference.
+        loss_fn: Loss function to evaluate.
+        objective: Objective to train the model on.
         data_loader_val: Dataloader for standard evaluation.
         data_loader_metrics: Dataloader for evaluation of image metrics.
         data_loader_image_log: Dataloader for image logging.
         num_logged_images: Number of images to log.
-        loss_type: Type of loss to use for evaluation.
-        distance_type: Type of distance weighting to use for the loss function
-        cfg_scale: Classifier-free guidance scale.
         log_writer: Optional wandb logger.
         compute_metrics_on_cpu: Whether to compute torchmetrics on CPU.
 
@@ -1169,10 +1083,9 @@ def launch_evals(
             model=model,
             data_loader=data_loader_val,
             device=device,
-            cond_domains=cond_domains,
-            distance_type=distance_type,
-            loss_type=loss_type,
             dtype=dtype,
+            loss_fn=loss_fn,
+            objective=objective,
         )
         all_eval_stats.update(eval_stats)
         model.train()
@@ -1185,12 +1098,9 @@ def launch_evals(
             model=model,
             data_loader=data_loader_metrics,
             device=device,
-            cond_domains=cond_domains,
-            noise_schedule=eval_noise_schedule,
-            num_diffusion_steps=num_eval_timesteps,
-            cfg_scale=cfg_scale,
             dtype=dtype,
             compute_on_cpu=compute_metrics_on_cpu,
+            objective=objective,
         )
         all_eval_stats.update(eval_metrics_results)
         model.train()
@@ -1203,14 +1113,11 @@ def launch_evals(
             model=model,
             data_loader=data_loader_image_log,
             device=device,
-            cond_domains=cond_domains,
-            noise_schedule=eval_noise_schedule,
-            num_diffusion_steps=num_eval_timesteps,
             eval_data_root=eval_data_root,
-            cfg_scale=cfg_scale,
             dtype=dtype,
             num_logged_images=num_logged_images,
             log_writer=log_writer,
+            objective=objective,
         )
         model.train()
         gc.collect()
@@ -1224,10 +1131,9 @@ def eval_standard(
     model,
     data_loader,
     device,
-    cond_domains: List[str],
-    loss_type: str = "bce",
-    distance_type: str = "euclidean",
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype,
+    loss_fn: Callable,
+    objective: str,
     header: str = "[Eval] ",
 ):
     # Switch to evaluation mode
@@ -1237,20 +1143,22 @@ def eval_standard(
     print_freq = 10
 
     for x in metric_logger.log_every(data_loader, print_freq, header=header):
-        mod_dict = {
-            mod: to_device(t, device, non_blocking=True)
-            for mod, t in x.items()
-            if mod in cond_domains
-        }
-
-        target_distribution = x["target_distribution"].to(
-            device, dtype=torch.float32, non_blocking=True
-        )
-        target = target_distribution
+        spatial_input, seq_input = prep_inputs(x)
+        spatial_input = spatial_input.to(device, non_blocking=True)
+        seq_input = seq_input.to(device, non_blocking=True)
 
         with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
-            logits = model(noisy_images, timesteps, mod_dict)
-            loss = distance_weighted_loss(logits, target, loss_type, distance_type)
+            logits = model(spatial_input, seq_input)
+
+            if objective == "lpl":
+                target = x["target_distribution"].to(
+                    device, dtype=dtype, non_blocking=True
+                )
+                loss = loss_fn(logits, target)
+            elif objective == "mae":
+                target = spatial_input
+                mask = x["mask"].to(device, dtype=dtype, non_blocking=True)
+                loss = loss_fn(logits, target, mask)
 
         loss_value = loss.item()
         metric_logger.update(loss=loss_value)
@@ -1268,8 +1176,8 @@ def eval_metrics(
     model: Union[nn.Module, DDP],
     data_loader: Iterable,
     device: Union[torch.device, str],
-    cond_domains: List[str],
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype,
+    objective: str,
     header: str = "[Eval] ",
     compute_on_cpu: bool = False,
 ) -> Dict[str, float]:
@@ -1280,8 +1188,8 @@ def eval_metrics(
         model: Model to evaluate.
         data_loader: Validation set data loader.
         device: Device to evaluate on.
-        cond_domains: List of conditioning domains.
         dtype: Data type for mixed precision inference.
+        objective: Objective to train the model on.
         header: The prefix (but includes a space after), for wandb logging.
         compute_on_cpu: Whether to compute torchmetrics on CPU.
 
@@ -1313,28 +1221,22 @@ def eval_metrics(
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     for x in metric_logger.log_every(
-        data_loader, print_freq=10, header=f"{header}Image metrics:"
+        data_loader, print_freq=10, header=f"{header}Image Metrics:"
     ):
-        mod_dict = {
-            mod: to_device(t, device, non_blocking=True)
-            for mod, t in x.items()
-            if mod in cond_domains
-        }
-
-        spatial_input = None
-        seq_input = None
-        spatial_mask = None
+        spatial_input, seq_input = prep_inputs(x)
+        spatial_input = spatial_input.to(device, non_blocking=True)
+        seq_input = seq_input.to(device, non_blocking=True)
 
         # Autoencode the images
         with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
-            logits = unwrap_model(model)(spatial_input, seq_input, spatial_mask)
+            logits = model(spatial_input, seq_input)
 
-        target_distribution = x["target_distribution"].to(
-            device, dtype=torch.float32, non_blocking=True
-        )
-
-        gt = target_distribution
-        pred = spatial_softmax(logits)
+        if objective == "lpl":
+            gt = x["target_distribution"].to(device, dtype=dtype, non_blocking=True)
+            pred = spatial_softmax(logits)
+        elif objective == "mae":
+            gt = destandardize(spatial_input)
+            pred = destandardize(logits)
 
         # Compute metrics
         mse_metric.update(pred, gt)
@@ -1361,7 +1263,7 @@ def eval_metrics(
     # Gather the stats from all processes (they should already be the same since
     # we sync the torcheval metrics after every step)
     metric_logger.synchronize_between_processes()
-    print(f"{header} Generation results:", metric_logger)
+    print(f"{header}Metric Results:", metric_logger)
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
@@ -1371,13 +1273,10 @@ def eval_image_log(
     model: Union[nn.Module, DDP],
     data_loader: Iterable,
     device: Union[torch.device, str],
-    cond_domains: List[str],
-    noise_schedule: SchedulerMixin,
-    num_diffusion_steps: int,
     eval_data_root: str,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype,
+    objective: str,
     num_logged_images: int = 9,
-    cfg_scale: float = 0.0,
     log_writer: Optional[utils.WandbLogger] = None,
     header: str = "[Eval] ",
 ) -> None:
@@ -1387,13 +1286,10 @@ def eval_image_log(
         model: Model to evaluate.
         data_loader: Validation set data loader.
         device: Device to evaluate on.
-        cond_domains: List of conditioning domains.
-        noise_schedule: Noise schedule to use for diffusion.
-        num_diffusion_steps: Number of diffusion steps to use for eval.
         eval_data_root: Root directory of evaluation data.
         dtype: Data type for mixed precision inference.
+        objective: Objective to train the model on.
         num_logged_images: Number of images to log.
-        cfg_scale: Classifier-free guidance scale.
         log_writer: Wandb logger.
         header: Prefix for wandb logging.
     """
@@ -1405,59 +1301,100 @@ def eval_image_log(
     model.eval()
 
     if utils.is_main_process():
-        imgs = []
+        if objective == "mae":
+            gt_imgs = []
+        pred_imgs = []
         for x in data_loader:
-            mod_dict = {
-                mod: to_device(t, device, non_blocking=True)
-                for mod, t in x.items()
-                if mod in cond_domains
-            }
+            if objective == "mae" and "rgb" not in x:
+                print("No RGB images found, skipping image logging")
+                return
 
-            # Autoencode the images
+            spatial_input, seq_input = prep_inputs(x)
+            spatial_input = spatial_input.to(device, non_blocking=True)
+            seq_input = seq_input.to(device, non_blocking=True)
+
             with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
-                logits = unwrap_model(model).generate(
-                    mod_dict,
-                    scheduler=noise_schedule,
-                    timesteps=num_diffusion_steps,
-                    cfg_scale=cfg_scale,
-                    image_size=tuple(x["target_distribution"].shape[-2:]),
-                )
+                logits = model(spatial_input, seq_input)
 
-            target_distribution = x["target_distribution"].to(device, non_blocking=True)
+            if objective == "lpl":
+                gt = x["target_distribution"]
+                pred = spatial_softmax(logits)
 
-            gt = target_distribution
-            pred = spatial_softmax(logits)
+                # Iterates over the batch
+                for target_dist, pred_dist, class_id, file_name in zip(
+                    gt, pred, x["class_id"], x["file_name"]
+                ):
+                    rgb_img_path = os.path.join(
+                        eval_data_root, "rgb", class_id, file_name + ".tif"
+                    )
+                    if not os.path.exists(rgb_img_path):
+                        print(f"Image {rgb_img_path} not found, skipping")
+                        continue
+                    pred_imgs.append(
+                        create_overlaid_img(target_dist, pred_dist, rgb_img_path)
+                    )
 
-            # Iterates over the batch dimension
-            for target_dist, pred_dist, class_id, file_name in zip(
-                gt, pred, x["class_id"], x["file_name"]
-            ):
-                rgb_img_path = os.path.join(
-                    eval_data_root, "rgb", class_id, file_name + ".tif"
-                )
-                if not os.path.exists(rgb_img_path):
-                    print(f"Image {rgb_img_path} not found, skipping")
-                    continue
-                imgs.append(create_overlaid_img(target_dist, pred_dist, rgb_img_path))
+            elif objective == "mae":
+                gt = destandardize(spatial_input[:, :3])
+                pred = destandardize(logits[:, :3])
+                gt_bytes = (
+                    255 * gt.float().permute(0, 2, 3, 1).clamp(0, 1).cpu().numpy()
+                ).astype(np.uint8)
+                pred_bytes = (
+                    255 * pred.float().permute(0, 2, 3, 1).clamp(0, 1).cpu().numpy()
+                ).astype(np.uint8)
+                gt_imgs.extend([Image.fromarray(img) for img in gt_bytes])
+                pred_imgs.extend([Image.fromarray(img) for img in pred_bytes])
 
         # Log example images to wandb
-        if len(imgs) > 0:
+        if len(gt_imgs) > 0:
             log_writer.wandb_safe_log(
-                {f"{header}Overlaid Images": wandb.Image(make_grid(imgs))},
+                {f"{header}Ground Truth Images": wandb.Image(make_grid(gt_imgs))},
+                commit=False,
+            )
+
+        if len(pred_imgs) > 0:
+            log_writer.wandb_safe_log(
+                {f"{header}Predicted Images": wandb.Image(make_grid(pred_imgs))},
                 commit=False,
             )
 
         print(f"Logged {num_logged_images} eval images")
 
 
+def prep_inputs(x: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    # Allows control over order of modalities in input
+    spatial_mods = []
+    if "rgb" in x:
+        spatial_mods.append(x["rgb"])
+    if "depth" in x:
+        spatial_mods.append(x["depth"])
+    # Concatenate along channel dimension
+    spatial_input = torch.cat(spatial_mods, dim=1)
+
+    seq_mods = []  # TODO: pad and truncate here
+    if "structured" in x:
+        seq_mods.append(x["structured"])
+    if "caption" in x:
+        seq_mods.append(x["caption"])
+    # Concatenate along the sequence dimension
+    seq_input = torch.cat(seq_mods, dim=1)
+
+    if "mask" in x:  # apply MAE mask (1 to keep, 0 to remove)
+        seq_input = seq_input * x["mask"]
+
+    return spatial_input, seq_input
+
+
 def spatial_softmax(x):
-    # Flatten spatial dims then apply softmax then reshape back
+    """Apply softmax to spatial dimensions of the input tensor.
+
+    Args:
+        x: Input image tensor. Shape (B, C, H, W)
+    """
+    # Flatten spatial dims, apply softmax, restore shape
     x = F.softmax(x.contiguous().flatten(-2), dim=-1).view_as(x)
     return x
-
-
-def mae_loss(logits, target):  # TODO: implement
-    pass
 
 
 def distance_weighted_loss(
@@ -1523,6 +1460,15 @@ def distance_weighted_loss(
         raise ValueError(f"Unsupported reduction type: {reduction}")
 
 
+def mae_loss(
+    logits, target, mask
+):  # Only consider the masked values (those removed from the input)
+    mask = ~mask.to(torch.bool)
+    logits = logits[mask]
+    target = target[mask]
+    return F.mse_loss(logits, target)
+
+
 def unwrap_model(model: Union[nn.Module, DDP]) -> nn.Module:
     """Retrieves a model from a DDP wrapper, if necessary."""
     return model.module if hasattr(model, "module") else model
@@ -1551,24 +1497,7 @@ def create_overlaid_img(
         pred_dist: The predicted distribution. Shape (1, H, W)
         rgb_img_path: Path to the rgb original image.
     """
-    pred_alpha_mask = (255 * pred_dist.permute(1, 2, 0).float().cpu().numpy()).astype(
-        np.uint8
-    )
-
     H, W = target_dist.shape[-2:]
-    # Byte array that corresponds to a yellow image
-    yellow = np.concatenate(
-        [255 * np.ones((H, W, 2)), np.zeros((H, W, 1))], axis=-1
-    ).astype(np.uint8)
-
-    pred_yellow_img = Image.fromarray(
-        np.concatenate([yellow, pred_alpha_mask], axis=-1), mode="RGBA"
-    )
-
-    # White image with completely transparent alpha channel
-    target_img_arr = np.concatenate(
-        [255 * np.ones((H, W, 3)), np.zeros((H, W, 1))], axis=-1
-    ).astype(np.uint8)
 
     # (i, j) of the single non-zero value in the target distribution
     i = target_dist.argmax(dim=-2).max().item()
@@ -1580,39 +1509,29 @@ def create_overlaid_img(
     lower_j = j - (margin if j - margin >= 0 else 0)
     upper_j = j + (1 + margin if j + margin < W else 1)
 
+    cmap = plt.get_cmap("plasma")
+    pred = cmap(
+        pred_dist.float().permute(1, 2, 0).squeeze(-1).clamp(0, 1).cpu().numpy()
+    )
+    pred[:, :, -1] = 0.3  # Set alpha channel to 0.3
+    pred_heatmap = Image.fromarray((255 * pred).astype(np.uint8))
+
+    # White image with completely transparent alpha channel
+    target_img_arr = np.concatenate(
+        [255 * np.ones((H, W, 3)), np.zeros((H, W, 1))], axis=-1
+    ).astype(np.uint8)
     # Create black square at the position of the 1 in the target distribution
     target_img_arr[lower_i:upper_i, lower_j:upper_j, :-1] = 0
     # Set the black square to full opacity
     target_img_arr[lower_i:upper_i, lower_j:upper_j, -1] = 255
-
     target_img = Image.fromarray(target_img_arr, mode="RGBA")
 
     im = Image.open(rgb_img_path)
     # Overlay the images
-    im.paste(pred_yellow_img, (0, 0), pred_yellow_img)
+    im.paste(pred_heatmap, (0, 0), pred_heatmap)
     im.paste(target_img, (0, 0), target_img)
 
     return im
-
-
-def to_device(
-    data: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-    device: Union[torch.device, str] = None,
-    dtype: torch.dtype = None,
-    non_blocking: bool = True,
-):
-    """
-    Move a tensor or a tuple of tensors to a device. Is used to handle the case when
-    a modality includes an attention mask (e.g., captions)
-    """
-    # NOTE: for some reason the data loader returns the tuple as a list so we
-    # check for not tensor instead and fix it
-    if not isinstance(data, torch.Tensor):
-        return (
-            data[0].to(device, dtype, non_blocking),
-            data[1].to(device, dtype, non_blocking),
-        )
-    return data.to(device, dtype, non_blocking)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ import os
 
 from PIL import Image
 
+from einops import rearrange
 from scipy.stats import iqr
 import numpy as np
 from transformers import T5Tokenizer
@@ -124,15 +125,13 @@ class UnifiedDataTransform(object):
             dict: Transformed dict of modalities
         """
         mod_dict = {
-            k: self.transforms_dict[k].preprocess(v)
-            for k, v in mod_dict.items()
+            k: self.transforms_dict[k].preprocess(v) for k, v in mod_dict.items()
         }
 
         mod_dict = self.unified_image_augment(mod_dict)
 
         mod_dict = {
-            k: self.transforms_dict[k].postprocess(v)
-            for k, v in mod_dict.items()
+            k: self.transforms_dict[k].postprocess(v) for k, v in mod_dict.items()
         }
 
         return mod_dict
@@ -146,7 +145,7 @@ class UnifiedDataTransform(object):
 class AbstractTransform(ABC):
 
     @abstractmethod
-    def load(self, sample):
+    def load(self, path):
         pass
 
     @abstractmethod
@@ -197,15 +196,15 @@ class ImageTransform(AbstractTransform):
         return img
 
     @staticmethod
-    def image_crop(img: Image, crop_coords: Tuple):
+    def image_crop(img: Image, coords: Tuple):
         """Crop and resize an image
 
         :param img: Image to crop and resize
-        :param crop_coords: Coordinates of the crop (top, left, h, w)
+        :param coords: Coordinates of the crop (top, left, h, w)
         :return: Cropped and resized image
         """
 
-        row, col, h, w = crop_coords
+        row, col, h, w = coords
         img = TF.crop(img, row, col, h, w)
         return img
 
@@ -231,18 +230,9 @@ class ImageTransform(AbstractTransform):
 
 class RGBTransform(ImageTransform):
 
-    def __init__(
-        self,
-        mean_and_std="naip",
-        no_data_value=0,
-    ):
-        if mean_and_std == "naip":
-            self.rgb_mean = NAIP_MEAN
-            self.rgb_std = NAIP_STD
-        else:
-            raise ValueError(f"Invalid mean_and_std: {mean_and_std}")
-
-        self.no_data_value = no_data_value
+    def __init__(self):
+        self.rgb_mean = NAIP_MEAN
+        self.rgb_std = NAIP_STD
 
     def rgb_to_tensor(self, img):
         # to_tensor converts to float, rescales to [0, 1], and reshapes to C x H x W
@@ -271,7 +261,7 @@ class RGBTransform(ImageTransform):
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_crop(img, crop_coords)
+        img = self.image_crop(img, (*crop_coords, target_size, target_size))
         img = self.image_flip(img, flip)
         return img
 
@@ -283,13 +273,8 @@ class RGBTransform(ImageTransform):
 
 class DepthTransform(ImageTransform):
 
-    def __init__(
-        self,
-        norm_ops=[],
-        no_data_value=-9999.0,
-    ):
+    def __init__(self, norm_ops=[]):
         self.norm_ops = norm_ops
-        self.no_data_value = no_data_value
 
     def depth_to_tensor(self, img):
         img = torch.Tensor(img)
@@ -300,12 +285,12 @@ class DepthTransform(ImageTransform):
         for op_str in self.norm_ops:
             if not hasattr(DepthTransform, op_str):
                 raise ValueError(f"Invalid depth norm operation: {op_str}")
-            img = getattr(DepthTransform, op_str)(img, no_data_value=self.no_data_value)
+            img = getattr(DepthTransform, op_str)(img)
 
         return img
 
     @staticmethod
-    def depth_robust_scaling(depth, no_data_value=-9999.0):
+    def depth_robust_scaling(depth, no_data_value=-999999.0):
         """Depth robust scaling
 
         :param depth: Depth map
@@ -319,7 +304,7 @@ class DepthTransform(ImageTransform):
         return (depth - np.median(valid_vals)) / (iqr(valid_vals) + 1e-6)
 
     @staticmethod
-    def depth_minmax_scaling(depth, no_data_value=-9999.0):
+    def depth_minmax_scaling(depth, no_data_value=-999999.0):
         """Depth relative normalization
 
         :param depth: Depth map
@@ -337,7 +322,7 @@ class DepthTransform(ImageTransform):
 
     @staticmethod
     def truncated_depth_standardization(
-        depth, thresh: float = 0.0, no_data_value=-9999.0
+        depth, thresh: float = 0.0, no_data_value=-999999.0
     ):
         """Truncated depth standardization
 
@@ -377,7 +362,7 @@ class DepthTransform(ImageTransform):
         rand_aug_idx: Optional[int],
         resample_mode: str = None,
     ):
-        img = self.image_crop(img, crop_coords)
+        img = self.image_crop(img, (*crop_coords, target_size, target_size))
         img = self.image_flip(img, flip)
         return img
 
@@ -396,7 +381,7 @@ class TargetDistributionTransform(ImageTransform):
     ):
         self.img_size = img_size
 
-    def load(self):
+    def load(self, path):
         center_point = (self.img_size // 2, self.img_size // 2)
         target_dist = np.zeros((self.img_size, self.img_size))
         target_dist[center_point[0], center_point[1]] = 1
@@ -416,61 +401,100 @@ class TargetDistributionTransform(ImageTransform):
         rand_aug_idx=None,
         resample_mode: str = None,
     ):
-        img = self.image_crop(img, crop_coords)
+        img = self.image_crop(img, (*crop_coords, target_size, target_size))
         img = self.image_flip(img, flip)
         return img
 
-    def postprocess(self, target_distribution):
-        target_distribution = torch.as_tensor(target_distribution)
-        return target_distribution.unsqueeze(0)
+    def postprocess(self, sample):
+        sample = torch.as_tensor(sample)
+        return sample.unsqueeze(0)
+
+
+class MaskTransform(ImageTransform):
+
+    def __init__(
+        self,
+        mask_size: int = 224,
+        mask_proportion: float = 0.6,
+        patch_size: int = 32,
+    ):
+        if mask_proportion < 0 or mask_proportion > 1:
+            raise ValueError("Mask proportion must be between 0 and 1")
+        if mask_size % patch_size != 0:
+            raise ValueError("Mask size must be divisible by patch size")
+        self.mask_size = mask_size
+        self.mask_proportion = mask_proportion
+        self.patch_size = patch_size
+
+    def load(self, path):
+        reduced_size = self.mask_size // self.patch_size
+        mask = np.zeros((reduced_size, reduced_size))
+        keep_proportion = 1 - self.mask_proportion
+        num_patches = reduced_size**2
+        num_patches_keep = int(keep_proportion * num_patches)
+
+        # randomly select patches to keep
+        patches_keep_idxs = np.random.choice(
+            num_patches, num_patches_keep, replace=False
+        )
+        # set patches to keep to 1
+        mask.flat[patches_keep_idxs] = 1
+
+        # inflate mask to full size
+        mask = mask.repeat(self.patch_size, axis=0).repeat(self.patch_size, axis=1)
+        return mask
+
+    def preprocess(self, sample):
+        return sample
+
+    def image_augment(
+        self,
+        img,
+        crop_coords: Tuple,
+        flip: bool,
+        orig_size: Tuple,
+        target_size: Tuple,
+        rand_aug_idx=None,
+        resample_mode: str = None,
+    ):
+        return img
+
+    def postprocess(self, sample):
+        sample = torch.as_tensor(sample)
+        return sample.unsqueeze(0)
 
 
 class CaptionTransform(AbstractTransform):
 
     def __init__(
         self,
-        return_attn_mask: bool = True,
         shuffle: bool = True,
-        root: str = None,
-        tokenizer_name: str = "t5-small",
-        index_col_name: str = "uid",
+        tokenizer_name: str = "t5-base",
+        index_col: str = "UID",
     ):
-        self.return_attn_mask = return_attn_mask
         self.shuffle = shuffle
-
-        for dir in os.listdir(root):
-            path = os.path.join(root, dir)
-            self.datasets = {}
-            for file in os.listdir(path):
-                if not file.endswith(".csv"):
-                    raise ValueError(f"Invalid file type: {file} in {path}")
-                path = os.path.join(path, file)
-                self.datasets[file[: -len(".csv")]] = pd.read_csv(
-                    path, index_col=index_col_name
-                )
-        if len(self.datasets) == 0:
-            raise ValueError(f"No data caption found in {root}")
-
         self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name)
+        self.index_col = index_col
 
-    def load(self, path) -> str:
-        uid = path.split("/")[-1]
-        # regex matches contigious substring of non-digits starting from the beginning of the string
-        dataset_name = re.match(r"^[^\d]*", uid).group()
-        dataset = self.datasets[dataset_name]
-        row = dataset.loc[uid]
-
+    def load(self, info) -> str:
+        path, uid = info
+        row = pd.read_csv(path, index_col=self.index_col, dtype=str).loc[uid]
+        dataset_name = uid[
+            : uid.index("Unlabeled" if "Unlabeled" in uid else "Labeled")
+        ]
         sentence_templates = TEMPLATES[dataset_name]
         sentences = []
-        for col in row[~row.isna()].index:  # exclude NAs
+        for col in row.dropna().index:
             if col in sentence_templates.keys():  # only use specified relevant columns
                 template = random.choice(sentence_templates[col])
+                if "[VALUE]" not in template:
+                    raise ValueError(f"Template {template} does not contain [VALUE]")
                 if not template.endswith("."):
                     template += "."
-
                 sentences.append(template.replace("[VALUE]", str(row[col])))
-
-        return " ".join(random.shuffle(sentences) if self.shuffle else sentences)
+        if self.shuffle:
+            random.shuffle(sentences)
+        return " ".join(sentences)
 
     def preprocess(self, sample):
         return sample
@@ -496,31 +520,70 @@ class StructuredDataTransform(AbstractTransform):
 
     def __init__(
         self,
-        col_map: Dict[str, str],
         shuffle: bool = True,
-        return_attn_mask: bool = True,
         root: str = None,
-        tokenizer_name: str = "t5-small",
+        mod_dirname: str = "structured",
+        tokenizer_name: str = "t5-base",
         index_col_name: str = "uid",
     ):
-        self.col_map = col_map
         self.shuffle = shuffle
-        self.return_attn_mask = return_attn_mask
-        class_dir = os.path.join(root, os.listdir(root)[0])
-        data_path = os.path.join(class_dir, os.listdir(class_dir)[0])
-        self.data = pd.read_csv(data_path, index_col=index_col_name)
+        self.col_map = {  # column name -> (natural name, unit)
+            "wind": ("wind strength", "meters per second"),
+            "2m_dewpoint_temperature": ("2m dewpoint temperature", "celcius"),
+            "2m_temperature": ("2m temperature", "celcius"),
+            "surface_pressure": ("surface pressure", "pascals"),
+            "total_precipitation": ("total precipitation", "meters"),
+            "precipitation_type": ("precipitation type", ""),
+            "snow_depth": ("snow depth", "meters of water equivalent"),
+            "low_cloud_cover": ("low cloud cover", "%"),
+            "medium_cloud_cover": ("medium cloud cover", "%"),
+            "cloud_base_height": ("cloud base height", "meters"),
+            "max_elevation": ("maximum elevation", "meters above sea level"),
+            "min_elevation": ("minimum elevation", "meters above sea level"),
+        }
+
+        self.datasets = {}
+        for split in os.listdir(root):
+            self.datasets[split] = {}
+            path = os.path.join(root, split, mod_dirname)
+
+            if len(os.listdir(path)) != 1:
+                raise ValueError(
+                    "Only one class allowed in the structured data directory"
+                )
+            class_dir = os.listdir(path)[0]
+            path = os.path.join(path, class_dir)
+
+            if len(os.listdir(path)) == 0:
+                raise ValueError(f"No dataset file found in {path}")
+            if len(os.listdir(path)) != 1:
+                raise ValueError("Only one dataset file allowed for structured data")
+            file = os.listdir(path)[0]
+            if not file.endswith(".csv"):
+                raise ValueError(f"Invalid file type: {file} in {path}")
+
+            dataset_file = os.path.join(path, file)
+            self.datasets[split] = pd.read_csv(
+                dataset_file, index_col=index_col_name, dtype=str
+            )
         self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name)
 
     def load(self, path):
-        uid = path.split("/")[-1]
-        row = self.data.loc[uid]
+        split, _, _, file = path.split("/")[-4:]
+        uid = file.split(".")[0]
+        dataset = self.datasets[split]
+        row = dataset.loc[uid]
+        row = row.dropna()
         kv_strs = []
-        for col_name in self.col_map.keys():
-            natural_name = self.col_map[col_name]
+        for col_name in row.index:
+            natural_name, unit = self.col_map[col_name]
             value = row[col_name]
-            kv_strs.append(f"{natural_name}: {value}")
+            kv_str = f"{natural_name}: {value}"
+            if unit:
+                kv_str += f" {unit}"
+            kv_strs.append(kv_str)
 
-        return " ".join(random.shuffle(kv_strs) if self.shuffle else kv_strs)
+        return ",".join(random.shuffle(kv_strs) if self.shuffle else kv_strs)
 
     def preprocess(self, sample):
         return sample

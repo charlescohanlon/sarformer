@@ -570,7 +570,6 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
         self,
         sample: torch.FloatTensor,  # Shape (B, C, H, W)
         cond: torch.Tensor,  # Shape (B, N, D)
-        mask: Union[None, torch.BoolTensor] = None,  # Shape (B, H, W)
     ):
         _, _, H, W = sample.shape
 
@@ -606,3 +605,6 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
 
     def __len__(self):
         return super().__len__()
+
+    def num_parameters(self):
+        return sum(p.numel() for p in self.parameters())

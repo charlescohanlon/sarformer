@@ -1,11 +1,7 @@
-from contextlib import nullcontext
-import math
-from functools import partial
-from typing import Any, Dict, Tuple
+from typing import Tuple
 import torch
 from torch import nn
 from src.utils.timm.registry import register_model
-from .fm_utils import LayerNorm, drop_path
 from src.models.unet import PatchedConvNeXtUNet
 from transformers import T5EncoderModel
 
@@ -59,11 +55,27 @@ class SARFormer(nn.Module):
         self,
         spatial_input: torch.Tensor,
         seq_input: torch.Tensor,
-        spatial_mask: torch.Tensor = None,
     ) -> torch.Tensor:
         context = self.seq_encoder(seq_input).last_hidden_state
-        x = self.backbone(spatial_input, context, spatial_mask)
+        x = self.backbone(spatial_input, context)
         return x
+
+    def train(self):
+        self.seq_encoder.train()
+        self.backbone.train()
+
+    def eval(self):
+        self.seq_encoder.eval()
+        self.backbone.eval()
+
+    def num_parameters_backbone(self):
+        return self.backbone.num_parameters()
+
+    def num_parameters_seq_encoder(self):
+        return self.seq_encoder.num_parameters()
+
+    def num_parameters(self):
+        return self.num_parameters_backbone() + self.num_parameters_seq_encoder()
 
 
 @register_model
@@ -72,14 +84,14 @@ def sarformer_b_mae(
     **kwargs,
 ):
     model = SARFormer(
-        t5_model_name_or_path="t5-base",
+        t5_model_name_or_path="google/t5-v1_1-base",
         in_channels=channels,
         out_channels=channels,
         num_heads=8,
         mlp_ratio=4.0,
         qkv_bias=True,
-        num_conv_blocks=3,
-        num_channels=128,
+        num_conv_blocks=8,
+        num_channels=64,
         patch_size=4,
         channel_mult=(1, 2, 4, 8, 16),
         drop_path_rate=0.0,

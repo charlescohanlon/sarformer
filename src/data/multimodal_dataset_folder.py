@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from torchvision.datasets.vision import VisionDataset
 from src.data.modality_transforms import AbstractTransform
+import pandas as pd
 
 IMG_EXTENSIONS = (
     ".jpg",
@@ -67,7 +68,8 @@ def make_dataset(
     directory: str,
     class_to_idx: Dict[str, int],
     extensions: Optional[Tuple[str, ...]] = None,
-    valid_id_dict: Optional[Dict[str, int]] = None,
+    valid_ids: Optional[set] = None,
+    index_col: Optional[str] = None,
     is_valid_file: Optional[Callable[[str], bool]] = None,
     cache_path: Optional[str] = None,
 ) -> List[Tuple[str, int]]:
@@ -92,15 +94,25 @@ def make_dataset(
     for target_class in sorted(class_to_idx.keys()):
         class_index = class_to_idx[target_class]
         target_dir = os.path.join(directory, target_class)
-        if not os.path.isdir(target_dir):
-            continue
-        for root, _, fnames in sorted(os.walk(target_dir, followlinks=True)):
+        for root, _, fnames in sorted(os.walk(target_dir, followlinks=False)):
             for fname in sorted(fnames):
                 path = os.path.join(root, fname)
-                is_valid_id = (
-                    valid_id_dict is None or fname.split(".")[0] in valid_id_dict
-                )
-                if is_valid_file(path) and is_valid_id:
+
+                def is_valid_id(x: str) -> bool:
+                    return valid_ids is None or x in valid_ids
+
+                if fname.endswith(".csv"):
+                    if index_col is None:
+                        raise ValueError("index_col must be provided for csv files")
+                    indices = pd.read_csv(path, index_col=index_col, dtype=str).index
+                    instances.extend(
+                        [
+                            ((path, uid), class_index)
+                            for uid in indices
+                            if is_valid_id(uid)
+                        ]
+                    )
+                elif is_valid_file(path) and is_valid_id(fname.split(".")[0]):
                     item = path, class_index
                     instances.append(item)
     if cache_path is not None:
@@ -165,13 +177,11 @@ class MultiModalDatasetFolder(VisionDataset):
         self.modalities = modalities
         self.modality_paths = {} if modality_paths is None else modality_paths
         for mod in self.modalities:
-            # Look for a path in the modality_info or use the modality prefix
-            if modality_info[mod].get("path", None) is None:
-                if len(modalities) == 1:
-                    raise ValueError("Can't have a single modality and no path")
-                self.modality_paths[mod] = None
-            elif mod not in self.modality_paths:
-                modality_paths[mod] = mod
+            if (
+                mod not in self.modality_paths
+                and modality_info[mod].get("path") is not None
+            ):
+                self.modality_paths[mod] = modality_info[mod]["path"]
 
         _, class_to_idx = self._find_classes(
             os.path.join(root, list(self.modality_paths.values())[0])
@@ -180,29 +190,23 @@ class MultiModalDatasetFolder(VisionDataset):
         extensions = UNIFIED_EXTENSIONS if is_valid_file is None else None
 
         uid_set = set(valid_ids) if valid_ids is not None else None
-        if len(uid_set) != len(valid_ids):
-            raise ValueError("valid_ids contains duplicates")
 
         samples = {
             mod: (
-                (
-                    make_dataset(
-                        os.path.join(self.root, f"{self.modality_paths[mod]}"),
-                        class_to_idx,  # all modalities should have same class(es)
-                        extensions,
-                        uid_set,
-                        is_valid_file,
-                    )
+                make_dataset(
+                    directory=os.path.join(self.root, f"{self.modality_paths[mod]}"),
+                    class_to_idx=class_to_idx,  # all modalities should have same class(es)
+                    extensions=extensions,
+                    valid_ids=uid_set,
+                    index_col=modality_info[mod].get("index_col"),
+                    is_valid_file=is_valid_file,
                 )
-                if self.modality_paths[mod] is not None
-                else []
             )
             for mod in self.modalities
+            if self.modality_info[mod].get("path") is not None
         }
 
         for mod, mod_samples in samples.items():
-            if self.modality_paths[mod] is None:
-                continue
             if len(mod_samples) == 0:
                 msg = "Found 0 valid files in subfolders of: {}\n".format(
                     os.path.join(self.root, f"{self.modality_paths[mod]}")
@@ -263,12 +267,12 @@ class MultiModalDatasetFolder(VisionDataset):
         """
         sample_dict = {}
         for mod in self.modalities:
-            if self.modality_paths[mod] is None:
-                sample = self.modality_transforms[mod].load()
-                sample_dict[mod] = sample
-                continue
-            path, _ = self.samples[mod][index]
-            sample = self.modality_transforms[mod].load(path)
+            info = None  # mask and target distribution do not have info
+            if mod in self.samples:
+                info, _ = self.samples[mod][index]
+            if self.modality_info[mod]["type"] == "img":
+                path_to_return = info
+            sample = self.modality_transforms[mod].load(info)
             sample_dict[mod] = sample
 
         if self.transform is not None:
@@ -277,7 +281,7 @@ class MultiModalDatasetFolder(VisionDataset):
             sample_dict = self.transform(sample_dict)
 
         if self.return_path:
-            class_id, file_name = self.get_class_and_file(path)
+            class_id, file_name = self.get_class_and_file(path_to_return)
             sample_dict["class_id"] = class_id
             sample_dict["file_name"] = file_name
 

@@ -3,7 +3,7 @@ import importlib
 
 TEMPLATES = {}  # keys are the prefix of the dataset: ie 'AZ', 'MRA'
 
-data_path = "fourm/data/sentence_templates"
+data_path = "src/data/sentence_templates"
 
 for filename in os.listdir(data_path):
 
