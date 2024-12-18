@@ -60,14 +60,6 @@ class SARFormer(nn.Module):
         x = self.backbone(spatial_input, context)
         return x
 
-    def train(self):
-        self.seq_encoder.train()
-        self.backbone.train()
-
-    def eval(self):
-        self.seq_encoder.eval()
-        self.backbone.eval()
-
     def num_parameters_backbone(self):
         return self.backbone.num_parameters()
 
@@ -79,18 +71,18 @@ class SARFormer(nn.Module):
 
 
 @register_model
-def sarformer_b_mae(
+def sarformer_s_mae(
     channels: int,
     **kwargs,
 ):
     model = SARFormer(
-        t5_model_name_or_path="google/t5-v1_1-base",
+        t5_model_name_or_path="google/t5-v1_1-small",
         in_channels=channels,
         out_channels=channels,
         num_heads=8,
         mlp_ratio=4.0,
         qkv_bias=True,
-        num_conv_blocks=8,
+        num_conv_blocks=5,
         num_channels=64,
         patch_size=4,
         channel_mult=(1, 2, 4, 8, 16),

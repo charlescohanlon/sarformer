@@ -58,7 +58,9 @@ MODALITY_INFO = {
 }
 
 MODALITY_TRANSFORMS = {
-    "caption": CaptionTransform(shuffle=True),
+    "caption": CaptionTransform(
+        shuffle=True, tokenizer_name="t5-small", max_seq_len=512
+    ),
     # "structured": StructuredDataTransform(shuffle=True),
     "rgb": RGBTransform(),
     "depth": DepthTransform(norm_ops=["depth_minmax_scaling"]),

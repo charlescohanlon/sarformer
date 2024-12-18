@@ -1,24 +1,24 @@
 run_name: auto
 
 # Model
-model: sarformer_b_mae
+model: sarformer_s_mae
 cond_domains: ["rgb", "depth", "caption"]
 target_size: 224
 
 # Train
 objective: mae
 mask_proportion: 0.6
-patch_size: 16
+patch_size: 32
 dtype: bf16 # fp32, fp16 or bf16
-warmup_epochs: 100
-epochs: 550
+warmup_epochs: 50
+epochs: 500
 opt: adamw
 opt_betas: [0.9, 0.99]
 blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
-batch_size: 24 # per GPU
-save_ckpt_freq: 25 # in epochs
+batch_size: 48 # per GPU
+save_ckpt_freq: 100 # in epochs
 weight_decay: 0.05 # the default
 lr_and_wd_scheduler: cosine
 
@@ -30,9 +30,9 @@ vflip: 0.5
 
 # Eval
 eval_freq: 25
-eval_metrics_freq: 25
-eval_image_log_freq: 25
-num_eval_metrics_samples: 96 # Number of samples to use for evaluating image metrics during training.
+eval_metrics_freq: 100
+eval_image_log_freq: 50
+num_eval_metrics_samples: 416 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 9
 dist_eval: True
 data_path: '/scratch/bdej/cohanlon/data/train'
@@ -50,4 +50,3 @@ compute_grad_norm: True
 # Misc.
 device: cuda
 num_workers: 110 # for data loaders
-

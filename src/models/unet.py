@@ -230,7 +230,7 @@ class NormCrossAttentionBlock(nn.Module):
     ):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = cond_dim // num_heads
+        head_dim = dim // num_heads
         self.scale = head_dim**-0.5
 
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
@@ -568,7 +568,7 @@ class PatchedConvNeXtUNet(ConvNeXtUNetModel):
 
     def forward(
         self,
-        sample: torch.FloatTensor,  # Shape (B, C, H, W)
+        sample: torch.Tensor,  # Shape (B, C, H, W)
         cond: torch.Tensor,  # Shape (B, N, D)
     ):
         _, _, H, W = sample.shape

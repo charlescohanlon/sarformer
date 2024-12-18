@@ -13,9 +13,11 @@
 # limitations under the License.
 import argparse
 from ast import mod
+from copy import copy
 import datetime
 import json
 from einops import repeat
+from scipy import spatial
 import wandb
 import math
 import os
@@ -445,7 +447,7 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
     # to allow --crop_std to be scientific notation
     args.crop_std = float(args.crop_std)
 
-    # need to return path to get the rgb counterpart for overlaid images
+    # used to set return path to get the rgb counterpart for overlaid images
     using_overlaid_imgs = args.objective == "lpl"
 
     transform = UnifiedDataTransform(
@@ -490,7 +492,7 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             drop_last=True,
         )
     else:
-        print("Warning: No training data provided.")
+        print("Warning: Not providing training data for eval only.")
         num_training_steps_per_epoch = 0
         data_loader_train = None
 
@@ -607,9 +609,12 @@ def get_model(args, modality_info):
     """Creates and returns model from arguments"""
     print(f"Creating model: {args.model} conditioned on {args.cond_domains}")
 
+    num_channels = sum(
+        [modality_info[mod].get("num_channels", 0) for mod in args.cond_domains]
+    )
     model = create_model(
         args.model,
-        modality_info=modality_info,
+        channels=num_channels,
     )
 
     return model
@@ -647,7 +652,7 @@ def main(args):
         args.objective = "lpl"
 
     # Domains
-    args.all_domains = args.cond_domains
+    args.all_domains = copy(args.cond_domains)
     if args.objective == "lpl":
         args.all_domains.append("target_distribution")
         loss_fn = lambda logits, target: distance_weighted_loss(
@@ -770,15 +775,6 @@ def main(args):
             % (max(wd_schedule_values), min(wd_schedule_values))
         )
 
-    # Auto-load from checkpoint (if args say to do so)
-    utils.auto_load_model(
-        args=args,
-        model=model,
-        model_without_ddp=model_without_ddp,
-        optimizer=optimizer,
-        loss_scaler=loss_scaler,
-    )
-
     # Eval (trained model)
     if args.eval_only:
         if data_loader_val is None:
@@ -792,13 +788,13 @@ def main(args):
             eval_data_root=args.eval_data_path,
             dtype=dtype,
             loss_fn=loss_fn,
+            objective=args.objective,
             data_loader_val=data_loader_val,
             data_loader_metrics=data_loader_metrics,
             data_loader_image_log=data_loader_image_log,
             num_logged_images=args.num_logged_images,
             log_writer=log_writer,
             compute_metrics_on_cpu=device.type == "cpu",
-            objective=args.objective,
         )
         if log_writer is not None:
             log_writer.update(eval_stats)
@@ -881,8 +877,6 @@ def main(args):
             data_loader_metrics=data_loader_metrics,
             data_loader_image_log=data_loader_image_log,
             num_logged_images=args.num_logged_images,
-            loss_type=args.loss_type,
-            distance_type=args.distance_type,
             log_writer=log_writer,
             compute_metrics_on_cpu=device.type == "cpu",
         )
@@ -952,9 +946,14 @@ def train_one_epoch(
                     ):
                         param_group["weight_decay"] = wd_schedule_values[it]
 
-        spatial_input, seq_input = prep_inputs(x)
-        spatial_input = spatial_input.to(device, non_blocking=True)
-        seq_input = seq_input.to(device, non_blocking=True)
+        spatial_input, seq_input = prep_inputs(x, device)
+
+        if objective == "mae":
+            # save target before masking
+            target = spatial_input.detach().clone()
+            # apply MAE mask (1 to remove, 0 to keep)
+            mask = x["mask"].to(device, non_blocking=True).expand_as(spatial_input)
+            spatial_input[mask] = 0  # remove masked values
 
         # Only sync if we update grad (for accum_iter)
         # See https://muellerzr.github.io/blog/gradient_accumulation.html
@@ -966,20 +965,19 @@ def train_one_epoch(
                     target = x["target_distribution"].to(device, non_blocking=True)
                     loss = loss_fn(logits, target)
                 elif objective == "mae":
-                    target = spatial_input
-                    mask = x["mask"].to(device, non_blocking=True)
                     loss = loss_fn(logits, target, mask)
 
-            loss_value = loss.item()
+                loss_value = loss.item()
 
-            if not math.isfinite(loss_value):
-                path = os.path.join(output_dir, "debug_mod_dict.pt")
-                torch.save(x, path)
-                print(f"Loss is {loss_value}, stopping training", file=sys.stderr)
-                print(f"Saved last batch to {path}", file=sys.stderr)
-                sys.exit(1)
+                if not math.isfinite(loss_value):
+                    path = os.path.join(output_dir, "debug_mod_dict.pt")
+                    torch.save(x, path)
+                    print(f"Loss is {loss_value}, stopping training", file=sys.stderr)
+                    print(f"Saved last batch to {path}", file=sys.stderr)
+                    sys.exit(1)
 
-            loss = loss / accum_iter
+                loss = loss / accum_iter
+
             grad_norm = loss_scaler(
                 loss,
                 optimizer,
@@ -1143,25 +1141,26 @@ def eval_standard(
     print_freq = 10
 
     for x in metric_logger.log_every(data_loader, print_freq, header=header):
-        spatial_input, seq_input = prep_inputs(x)
-        spatial_input = spatial_input.to(device, non_blocking=True)
-        seq_input = seq_input.to(device, non_blocking=True)
+        spatial_input, seq_input = prep_inputs(x, device)
+
+        if objective == "mae":
+            # save target before masking
+            target = spatial_input.detach().clone()
+            # apply MAE mask (1 to remove, 0 to keep)
+            mask = x["mask"].to(device, non_blocking=True).expand_as(spatial_input)
+            spatial_input[mask] = 0  # remove masked values
 
         with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
             logits = model(spatial_input, seq_input)
 
             if objective == "lpl":
-                target = x["target_distribution"].to(
-                    device, dtype=dtype, non_blocking=True
-                )
+                target = x["target_distribution"].to(device, non_blocking=True)
                 loss = loss_fn(logits, target)
             elif objective == "mae":
-                target = spatial_input
-                mask = x["mask"].to(device, dtype=dtype, non_blocking=True)
                 loss = loss_fn(logits, target, mask)
 
-        loss_value = loss.item()
-        metric_logger.update(loss=loss_value)
+            loss_value = loss.item()
+            metric_logger.update(loss=loss_value)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -1223,34 +1222,46 @@ def eval_metrics(
     for x in metric_logger.log_every(
         data_loader, print_freq=10, header=f"{header}Image Metrics:"
     ):
-        spatial_input, seq_input = prep_inputs(x)
-        spatial_input = spatial_input.to(device, non_blocking=True)
-        seq_input = seq_input.to(device, non_blocking=True)
+        spatial_input, seq_input = prep_inputs(x, device)
+
+        if objective == "mae":
+            # apply MAE mask (1 to remove, 0 to keep)
+            mask = x["mask"].to(device, non_blocking=True).expand_as(spatial_input)
+            spatial_input[mask] = 0  # remove masked values
 
         # Autoencode the images
         with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
             logits = model(spatial_input, seq_input)
 
-        if objective == "lpl":
-            gt = x["target_distribution"].to(device, dtype=dtype, non_blocking=True)
-            pred = spatial_softmax(logits)
-        elif objective == "mae":
-            gt = destandardize(spatial_input)
-            pred = destandardize(logits)
+            if objective == "lpl":
+                gt = x["target_distribution"].to(device, non_blocking=True)
+                pred = spatial_softmax(logits)
+            elif objective == "mae":
+                gt_inputs, pred_inputs = [], []
+                if "rgb" in x:
+                    gt_rgb = destandardize(x["rgb"]).to(device, non_blocking=True)
+                    gt_inputs.append(gt_rgb)
+                    pred_rgb = destandardize(logits[:, :3])
+                    pred_inputs.append(pred_rgb)
+                if "depth" in x:
+                    gt_depth = x["depth"].to(device, non_blocking=True)
+                    gt_inputs.append(gt_depth)
+                    pred_depth = logits[:, 3:] if "rgb" in x else logits
+                    pred_inputs.append(pred_depth)
 
-        # Compute metrics
-        mse_metric.update(pred, gt)
-        mae_metric.update(pred, gt)
-        psnr_metric.update(pred, gt)
-        ms_ssim_metric.update(pred, gt)
+                gt = torch.cat(gt_inputs, dim=1)
+                pred = torch.cat(pred_inputs, dim=1)
 
-    # Compute and log metrics
-    results = {}
-
-    results[header + "MSE"] = mse_metric.compute().item()
-    results[header + "MAE"] = mae_metric.compute().item()
-    results[header + "PSNR"] = psnr_metric.compute().item()
-    results[header + "MS-SSIM"] = ms_ssim_metric.compute().item()
+            # Compute and log metrics
+            mse_metric.update(pred, gt)
+            mae_metric.update(pred, gt)
+            psnr_metric.update(pred, gt)
+            ms_ssim_metric.update(pred, gt)
+            results = {}
+            results[header + "MSE"] = mse_metric.compute().item()
+            results[header + "MAE"] = mae_metric.compute().item()
+            results[header + "PSNR"] = psnr_metric.compute().item()
+            results[header + "MS-SSIM"] = ms_ssim_metric.compute().item()
 
     # Reset metrics
     mse_metric.reset()
@@ -1309,9 +1320,14 @@ def eval_image_log(
                 print("No RGB images found, skipping image logging")
                 return
 
-            spatial_input, seq_input = prep_inputs(x)
-            spatial_input = spatial_input.to(device, non_blocking=True)
-            seq_input = seq_input.to(device, non_blocking=True)
+            spatial_input, seq_input = prep_inputs(x, device)
+
+            if objective == "mae":
+                # save target before masking
+                target = spatial_input.detach().clone()
+                # apply MAE mask (1 to remove, 0 to keep)
+                mask = x["mask"].to(device, non_blocking=True).expand_as(spatial_input)
+                spatial_input[mask] = 0  # remove masked values
 
             with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
                 logits = model(spatial_input, seq_input)
@@ -1335,8 +1351,12 @@ def eval_image_log(
                     )
 
             elif objective == "mae":
-                gt = destandardize(spatial_input[:, :3])
-                pred = destandardize(logits[:, :3])
+                gt = destandardize(target[:, :3]).float()
+                pred = destandardize(
+                    logits[:, :3]
+                ).float()  # ensure pred and gt are same type
+                kept_in_input = ~mask[:, :3]  # already checked that rgb is in x
+                pred[kept_in_input] = gt[kept_in_input]
                 gt_bytes = (
                     255 * gt.float().permute(0, 2, 3, 1).clamp(0, 1).cpu().numpy()
                 ).astype(np.uint8)
@@ -1362,26 +1382,25 @@ def eval_image_log(
         print(f"Logged {num_logged_images} eval images")
 
 
-def prep_inputs(x: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+def prep_inputs(
+    x: Dict[str, torch.Tensor], device: Union[str, torch.device]
+) -> Tuple[torch.Tensor, torch.Tensor]:
     # Allows control over order of modalities in input
     spatial_mods = []
     if "rgb" in x:
-        spatial_mods.append(x["rgb"])
+        spatial_mods.append(x["rgb"].to(device, non_blocking=True))
     if "depth" in x:
-        spatial_mods.append(x["depth"])
+        spatial_mods.append(x["depth"].to(device, non_blocking=True))
     # Concatenate along channel dimension
     spatial_input = torch.cat(spatial_mods, dim=1)
 
-    seq_mods = []  # TODO: pad and truncate here
+    seq_mods = []
     if "structured" in x:
-        seq_mods.append(x["structured"])
+        seq_mods.append(x["structured"].to(device, non_blocking=True))
     if "caption" in x:
-        seq_mods.append(x["caption"])
+        seq_mods.append(x["caption"].to(device, non_blocking=True))
     # Concatenate along the sequence dimension
     seq_input = torch.cat(seq_mods, dim=1)
-
-    if "mask" in x:  # apply MAE mask (1 to keep, 0 to remove)
-        seq_input = seq_input * x["mask"]
 
     return spatial_input, seq_input
 
@@ -1446,6 +1465,7 @@ def distance_weighted_loss(
     elif loss_type == "ce":
         loss = -dists * target * torch.log(pred)
     elif loss_type == "mse":
+        loss = dists * F.mse_loss(pred, target, reduction="none")
         loss = dists * (target - pred) ** 2
     else:
         raise ValueError(f"Unsupported loss type: {loss_type}")
@@ -1460,13 +1480,9 @@ def distance_weighted_loss(
         raise ValueError(f"Unsupported reduction type: {reduction}")
 
 
-def mae_loss(
-    logits, target, mask
-):  # Only consider the masked values (those removed from the input)
-    mask = ~mask.to(torch.bool)
-    logits = logits[mask]
-    target = target[mask]
-    return F.mse_loss(logits, target)
+def mae_loss(logits, target, removed_mask):
+    # Only consider the masked values (those removed from the input)
+    return F.mse_loss(logits[removed_mask], target[removed_mask])
 
 
 def unwrap_model(model: Union[nn.Module, DDP]) -> nn.Module:

@@ -429,16 +429,16 @@ class MaskTransform(ImageTransform):
     def load(self, path):
         reduced_size = self.mask_size // self.patch_size
         mask = np.zeros((reduced_size, reduced_size))
-        keep_proportion = 1 - self.mask_proportion
+        remove_proportion = self.mask_proportion
         num_patches = reduced_size**2
-        num_patches_keep = int(keep_proportion * num_patches)
+        num_patches_remove = int(remove_proportion * num_patches)
 
-        # randomly select patches to keep
-        patches_keep_idxs = np.random.choice(
-            num_patches, num_patches_keep, replace=False
+        # randomly select patches to remove
+        patches_remove_idxs = np.random.choice(
+            num_patches, num_patches_remove, replace=False
         )
-        # set patches to keep to 1
-        mask.flat[patches_keep_idxs] = 1
+        # set patches-to-remove to 1
+        mask.flat[patches_remove_idxs] = 1
 
         # inflate mask to full size
         mask = mask.repeat(self.patch_size, axis=0).repeat(self.patch_size, axis=1)
@@ -460,7 +460,7 @@ class MaskTransform(ImageTransform):
         return img
 
     def postprocess(self, sample):
-        sample = torch.as_tensor(sample)
+        sample = torch.as_tensor(sample, dtype=torch.bool)
         return sample.unsqueeze(0)
 
 
@@ -469,12 +469,14 @@ class CaptionTransform(AbstractTransform):
     def __init__(
         self,
         shuffle: bool = True,
-        tokenizer_name: str = "t5-base",
+        tokenizer_name: str = "t5-small",
         index_col: str = "UID",
+        max_seq_len: int = 512,
     ):
         self.shuffle = shuffle
         self.tokenizer = T5Tokenizer.from_pretrained(tokenizer_name)
         self.index_col = index_col
+        self.max_seq_len = max_seq_len
 
     def load(self, info) -> str:
         path, uid = info
@@ -512,8 +514,14 @@ class CaptionTransform(AbstractTransform):
         return val
 
     def postprocess(self, sample):
-        inputs = self.tokenizer.encode(sample, return_tensors="pt")
-        return inputs
+        inputs = self.tokenizer.encode(
+            sample,
+            return_tensors="pt",
+            max_length=self.max_seq_len,
+            truncation=True,
+            padding="max_length",
+        )
+        return inputs.squeeze(0)  # needs to be shape (seq,)
 
 
 class StructuredDataTransform(AbstractTransform):
@@ -523,7 +531,7 @@ class StructuredDataTransform(AbstractTransform):
         shuffle: bool = True,
         root: str = None,
         mod_dirname: str = "structured",
-        tokenizer_name: str = "t5-base",
+        tokenizer_name: str = "t5-small",
         index_col_name: str = "uid",
     ):
         self.shuffle = shuffle
@@ -602,4 +610,4 @@ class StructuredDataTransform(AbstractTransform):
 
     def postprocess(self, sample):
         inputs = self.tokenizer.encode(sample, return_tensors="pt")
-        return inputs
+        return inputs.squeeze(0)  # needs to be shape (seq,)
