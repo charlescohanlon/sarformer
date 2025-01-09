@@ -1,33 +1,18 @@
 # DOCUMENTATION
 
-## Random Notes
+## Experiements
+parameterize a gaussian with output of the network
+ - use the distribution of distances from found
 
-Pre-train idea:
-Use a pre-trained text encoder (e.g., T5) to create latent embeddings for sequence input
-1. Cut out NAIP/DEM tifs at 1785 (893 + 893 - 1)
-2. Crop random 893 (447 + 447 - 1) 
-    - supposed to produce a simulated observation that takes place in same viscinity
-    - select crop based on some kind of normal distribution complement? (that makes edges more likely)
-3. Simulate prob agent from random start within 893 crop
-4. Crop 447 w/ end point at center
-During pre-training
-    - freeze text encoder
-    - select random SAR case to select cut out image
-        - take corresponding data and add noise then use as conditioning
-Fine-tune on sar
-    - still weight real cases in the loss
+see where we can get with tabular only
+
+rgb + depth only
+
+regression on the point only
+
 
 
 ### Todo:
-- Cameron:
-- Matthew:
-    - research noising as an augmentation
-    - write augmenter code
-- Charles: 
-    - write shapefile script
-    - write mae conv code
-    - test t5 encoder
-
 - Compute NAIP mean and standard deviation on 447 images
 - Random crop with normal distribution
 - Download new weather data values

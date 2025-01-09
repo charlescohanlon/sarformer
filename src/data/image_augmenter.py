@@ -62,10 +62,6 @@ class CropImageAugmenter(AbstractImageAugmenter):
         start = (self.img_size - self.eff_img_size) // 2
         end = self.img_size - start - self.target_size
 
-        # center distribution at center of valid crop range
-        start = (self.img_size - self.eff_img_size) // 2
-        end = self.img_size - start - self.target_size
-
         mean = (start + end) / 2
 
         # compute bounds of truncated normal distribution in stds

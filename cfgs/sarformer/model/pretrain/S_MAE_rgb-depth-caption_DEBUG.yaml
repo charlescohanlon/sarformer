@@ -1,9 +1,10 @@
 run_name: auto
 
 # Model
-model: sarformer_s_mae
+model: sarformer_s
 cond_domains: ["rgb", "depth", "caption"]
 target_size: 224
+finetune: "/scratch/bdej/cohanlon/checkpoints/sarformer/model/pretrain/S_MAE_rgb-depth-caption/checkpoint-final.pth"
 
 # Train
 objective: mae
@@ -50,5 +51,5 @@ compute_grad_norm: True
 # Misc.
 device: cuda
 num_workers: 59 # for data loaders
-eval_only: False
+eval_only: True
 

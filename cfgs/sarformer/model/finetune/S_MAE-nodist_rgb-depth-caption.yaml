@@ -4,34 +4,36 @@ run_name: auto
 model: sarformer_s
 cond_domains: ["rgb", "depth", "caption"]
 target_size: 224
+finetune: "/scratch/bdej/cohanlon/checkpoints/sarformer/model/pretrain/S_MAE_rgb-depth-caption/checkpoint-final.pth"
 
 # Train
-objective: mae
-mask_proportion: 0.6
-patch_size: 32
+objective: lpl
+loss_type: mse
+distance_type: none
 dtype: bf16 # fp32, fp16 or bf16
-warmup_epochs: 50
-epochs: 500
+warmup_epochs: 10
+epochs: 100
 opt: adamw
 opt_betas: [0.9, 0.99]
 blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
-batch_size: 48 # per GPU
-save_ckpt_freq: 100 # in epochs
+batch_size: 32 # per GPU
+save_ckpt_freq: 25 # in epochs
 weight_decay: 0.05 # the default
 lr_and_wd_scheduler: cosine
 
 # Augmentation
 full_img_size: 673
-crop_std: 1e16 # for near uniform random crop sampling
-hflip: 0.5
-vflip: 0.5
+eff_img_size: 447
+crop_std: 1e3
+hflip: 0.0
+vflip: 0.0
 
 # Eval
-eval_freq: 25
-eval_metrics_freq: 100
-eval_image_log_freq: 50
+eval_freq: 10
+eval_metrics_freq: 25
+eval_image_log_freq: 10
 num_eval_metrics_samples: 416 # Number of samples to use for evaluating image metrics during training.
 num_logged_images: 9
 dist_eval: True

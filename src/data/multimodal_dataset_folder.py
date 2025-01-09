@@ -266,11 +266,12 @@ class MultiModalDatasetFolder(VisionDataset):
             dict: maps modality names to sample tensors
         """
         sample_dict = {}
+        path_to_return = None
         for mod in self.modalities:
             info = None  # mask and target distribution do not have info
             if mod in self.samples:
                 info, _ = self.samples[mod][index]
-            if self.modality_info[mod]["type"] == "img":
+            if path_to_return is None and info is not None:
                 path_to_return = info
             sample = self.modality_transforms[mod].load(info)
             sample_dict[mod] = sample
@@ -281,6 +282,8 @@ class MultiModalDatasetFolder(VisionDataset):
             sample_dict = self.transform(sample_dict)
 
         if self.return_path:
+            if path_to_return is None:
+                raise ValueError("return_path is True but no path to return")
             class_id, file_name = self.get_class_and_file(path_to_return)
             sample_dict["class_id"] = class_id
             sample_dict["file_name"] = file_name

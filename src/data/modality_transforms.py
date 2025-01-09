@@ -157,7 +157,7 @@ class AbstractTransform(ABC):
         self,
         v,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -181,7 +181,7 @@ class ImageTransform(AbstractTransform):
         return img
 
     @staticmethod
-    def image_flip(img: Image, flip: bool):
+    def image_flip(img: Image, flip: Tuple[bool]):
         """Horizontally flip an image
 
         :param img: Image to crop and resize
@@ -255,7 +255,7 @@ class RGBTransform(ImageTransform):
         self,
         img,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -356,7 +356,7 @@ class DepthTransform(ImageTransform):
         self,
         img,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -395,14 +395,16 @@ class TargetDistributionTransform(ImageTransform):
         self,
         img,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
         resample_mode: str = None,
     ):
-        img = self.image_crop(img, (*crop_coords, target_size, target_size))
-        img = self.image_flip(img, flip)
+        if True in flip:
+            raise ValueError("Flipping target distribution is not supported")
+        row, col = crop_coords
+        img = img[row : row + target_size, col : col + target_size]
         return img
 
     def postprocess(self, sample):
@@ -451,7 +453,7 @@ class MaskTransform(ImageTransform):
         self,
         img,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,
@@ -505,7 +507,7 @@ class CaptionTransform(AbstractTransform):
         self,
         val,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx: Optional[int],
@@ -600,7 +602,7 @@ class StructuredDataTransform(AbstractTransform):
         self,
         val,
         crop_coords: Tuple,
-        flip: bool,
+        flip: Tuple[bool],
         orig_size: Tuple,
         target_size: Tuple,
         rand_aug_idx=None,

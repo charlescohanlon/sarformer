@@ -1,16 +1,3 @@
-# Copyright 2024 EPFL and Apple Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 import argparse
 from ast import mod
 from copy import copy
@@ -359,11 +346,6 @@ def get_args():
     )
 
     parser.add_argument("--seed", default=0, type=int, help="Random seed ")
-    parser.add_argument("--resume", default="", help="resume from checkpoint")
-    parser.add_argument("--auto_resume", action="store_true")
-    parser.add_argument("--no_auto_resume", action="store_false", dest="auto_resume")
-    parser.set_defaults(auto_resume=False)
-
     parser.add_argument("--start_epoch", default=0, type=int, help="start epoch")
     parser.add_argument("--num_workers", default=10, type=int)
     parser.add_argument(
@@ -609,12 +591,21 @@ def get_model(args, modality_info):
     """Creates and returns model from arguments"""
     print(f"Creating model: {args.model} conditioned on {args.cond_domains}")
 
-    num_channels = sum(
+    cond_num_channels = sum(
         [modality_info[mod].get("num_channels", 0) for mod in args.cond_domains]
     )
+    if args.objective == "lpl":
+        pred_num_channels = modality_info["target_distribution"]["num_channels"]
+    elif args.objective == "mae":
+        pred_num_channels = cond_num_channels
+    else:
+        raise ValueError(f"Objective {args.objective} not implemented.")
+
     model = create_model(
         args.model,
-        channels=num_channels,
+        in_channels=cond_num_channels,
+        out_channels=pred_num_channels,
+        is_pretraining=args.is_pretraining,
     )
 
     return model
@@ -655,11 +646,13 @@ def main(args):
     args.all_domains = copy(args.cond_domains)
     if args.objective == "lpl":
         args.all_domains.append("target_distribution")
+        args.is_pretraining = False
         loss_fn = lambda logits, target: distance_weighted_loss(
             logits, target, args.loss_type, args.distance_type
         )
     elif args.objective == "mae":
         args.all_domains.append("mask")
+        args.is_pretraining = True
         loss_fn = mae_loss
     else:
         raise ValueError(f"Objective {args.objective} not implemented.")
@@ -689,7 +682,10 @@ def main(args):
     # Starting from pre-trained model
     if args.finetune:
         checkpoint = torch.load(args.finetune, map_location="cpu")
-        msg = model.load_state_dict(checkpoint["model"], strict=False)
+        pretrained_weights = {  # remove output layer weights
+            k: w for k, w in checkpoint["model"].items() if "out_proj" not in k
+        }
+        msg = model.load_state_dict(pretrained_weights, strict=False)
         print(msg)
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -785,7 +781,6 @@ def main(args):
             launch_eval_image_log=True,
             model=model,
             device=device,
-            eval_data_root=args.eval_data_path,
             dtype=dtype,
             loss_fn=loss_fn,
             objective=args.objective,
@@ -869,7 +864,6 @@ def main(args):
             launch_eval_image_log=launch_eval_image_log,
             model=model,
             device=device,
-            eval_data_root=args.eval_data_path,
             dtype=dtype,
             loss_fn=loss_fn,
             objective=args.objective,
@@ -954,6 +948,8 @@ def train_one_epoch(
             # apply MAE mask (1 to remove, 0 to keep)
             mask = x["mask"].to(device, non_blocking=True).expand_as(spatial_input)
             spatial_input[mask] = 0  # remove masked values
+        elif objective == "lpl":
+            target = x["target_distribution"].to(device, non_blocking=True)
 
         # Only sync if we update grad (for accum_iter)
         # See https://muellerzr.github.io/blog/gradient_accumulation.html
@@ -962,7 +958,6 @@ def train_one_epoch(
                 logits = model(spatial_input, seq_input)
 
                 if objective == "lpl":
-                    target = x["target_distribution"].to(device, non_blocking=True)
                     loss = loss_fn(logits, target)
                 elif objective == "mae":
                     loss = loss_fn(logits, target, mask)
@@ -1037,7 +1032,6 @@ def launch_evals(
     launch_eval_image_log: bool,
     model: Union[nn.Module, DDP],
     device: Union[torch.device, str],
-    eval_data_root: str,
     dtype: torch.dtype,
     loss_fn: Callable,
     objective: str,
@@ -1057,7 +1051,6 @@ def launch_evals(
         launch_eval_image_log: Whether to launch image logging.
         model: Model to evaluate.
         device: Device to evaluate on.
-        eval_data_root: Root directory of evaluation data.
         dtype: Data type for mixed precision inference.
         loss_fn: Loss function to evaluate.
         objective: Objective to train the model on.
@@ -1111,7 +1104,6 @@ def launch_evals(
             model=model,
             data_loader=data_loader_image_log,
             device=device,
-            eval_data_root=eval_data_root,
             dtype=dtype,
             num_logged_images=num_logged_images,
             log_writer=log_writer,
@@ -1284,7 +1276,6 @@ def eval_image_log(
     model: Union[nn.Module, DDP],
     data_loader: Iterable,
     device: Union[torch.device, str],
-    eval_data_root: str,
     dtype: torch.dtype,
     objective: str,
     num_logged_images: int = 9,
@@ -1312,11 +1303,10 @@ def eval_image_log(
     model.eval()
 
     if utils.is_main_process():
-        if objective == "mae":
-            gt_imgs = []
+        gt_imgs = []
         pred_imgs = []
         for x in data_loader:
-            if objective == "mae" and "rgb" not in x:
+            if "rgb" not in x:
                 print("No RGB images found, skipping image logging")
                 return
 
@@ -1328,6 +1318,8 @@ def eval_image_log(
                 # apply MAE mask (1 to remove, 0 to keep)
                 mask = x["mask"].to(device, non_blocking=True).expand_as(spatial_input)
                 spatial_input[mask] = 0  # remove masked values
+            elif objective == "lpl":
+                original_input = spatial_input.detach().clone()
 
             with torch.amp.autocast(device.type, dtype, enabled=dtype != torch.float32):
                 logits = model(spatial_input, seq_input)
@@ -1337,17 +1329,24 @@ def eval_image_log(
                 pred = spatial_softmax(logits)
 
                 # Iterates over the batch
-                for target_dist, pred_dist, class_id, file_name in zip(
-                    gt, pred, x["class_id"], x["file_name"]
+                for target_dist, pred_dist, img_as_tensor in zip(
+                    gt,
+                    pred,
+                    original_input,  # use to get rgb image
                 ):
-                    rgb_img_path = os.path.join(
-                        eval_data_root, "rgb", class_id, file_name + ".tif"
+                    rgb_img = Image.fromarray(
+                        (
+                            255
+                            * destandardize(img_as_tensor[:3])
+                            .float()
+                            .permute(1, 2, 0)
+                            .clamp(0, 1)
+                            .cpu()
+                            .numpy()
+                        ).astype(np.uint8)
                     )
-                    if not os.path.exists(rgb_img_path):
-                        print(f"Image {rgb_img_path} not found, skipping")
-                        continue
                     pred_imgs.append(
-                        create_overlaid_img(target_dist, pred_dist, rgb_img_path)
+                        create_overlaid_img(target_dist, pred_dist, rgb_img)
                     )
 
             elif objective == "mae":
@@ -1439,10 +1438,11 @@ def distance_weighted_loss(
     """
     with torch.no_grad():
         H, W = logits.shape[-2:]
+        device = logits.device
 
         # Row and column indice tensors
-        i = repeat(torch.arange(H), "h -> 1 1 h w", w=W)
-        j = repeat(torch.arange(W), "w -> 1 1 h w", h=H)
+        i = repeat(torch.arange(H, device=device), "h -> 1 1 h w", w=W)
+        j = repeat(torch.arange(W, device=device), "w -> 1 1 h w", h=H)
 
         # Index positions of the single non-zero value in the target distribution
         a = target.argmax(dim=-2).max().item()
@@ -1453,11 +1453,11 @@ def distance_weighted_loss(
         elif distance_type == "manhattan":
             dists = torch.abs(i - a) + torch.abs(j - b)  # (1, 1, H, W)
         elif distance_type == "none":
-            dists = torch.ones_like(logits)  # (B, C, H, W)
+            dists = torch.ones_like(logits, device=device)  # (B, C, H, W)
         else:
             raise ValueError(f"Unsupported distance type: {distance_type}")
 
-    dists = (eps + dists).to(logits.device, non_blocking=True)
+    dists = dists / dists.max() + eps
     pred = spatial_softmax(logits)
 
     if loss_type == "bce":
@@ -1465,11 +1465,13 @@ def distance_weighted_loss(
     elif loss_type == "ce":
         loss = -dists * target * torch.log(pred)
     elif loss_type == "mse":
-        loss = dists * F.mse_loss(pred, target, reduction="none")
         loss = dists * (target - pred) ** 2
     else:
         raise ValueError(f"Unsupported loss type: {loss_type}")
 
+    loss = loss.sum(dim=(1, 2, 3))  # Sum over channel and spatial dimensions
+
+    # Reduce over batch dimension
     if reduction == "mean":
         return loss.mean()
     elif reduction == "sum":
@@ -1502,8 +1504,8 @@ def make_grid(images: List[Image.Image]) -> Image.Image:
 
 
 def create_overlaid_img(
-    target_dist: torch.Tensor, pred_dist: torch.Tensor, rgb_img_path: str
-):
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, img: Image.Image
+) -> Image.Image:
     """Creates an image with the target and predictions overlaid on the original image.
     The target distribution's single non-zero value is replaced by a black square to make it more visible.
     All distributions should sum to 1.
@@ -1542,12 +1544,11 @@ def create_overlaid_img(
     target_img_arr[lower_i:upper_i, lower_j:upper_j, -1] = 255
     target_img = Image.fromarray(target_img_arr, mode="RGBA")
 
-    im = Image.open(rgb_img_path)
     # Overlay the images
-    im.paste(pred_heatmap, (0, 0), pred_heatmap)
-    im.paste(target_img, (0, 0), target_img)
+    img.paste(pred_heatmap, (0, 0), pred_heatmap)
+    img.paste(target_img, (0, 0), target_img)
 
-    return im
+    return img
 
 
 if __name__ == "__main__":

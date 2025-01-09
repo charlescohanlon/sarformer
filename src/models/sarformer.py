@@ -22,17 +22,16 @@ class SARFormer(nn.Module):
         channel_mult: Tuple[int, ...] = (1, 2, 4, 8, 16),
         drop_path_rate: float = 0.0,
         act_layer: nn.Module = nn.GELU,
-        is_pretraining: bool = False,
+        freeze_enc: bool = False,
     ):
         super().__init__()
 
         self.init_std = 0.02
-        self.is_pretraining = is_pretraining
+        self.is_pretraining = freeze_enc
 
         self.seq_encoder = T5EncoderModel.from_pretrained(t5_model_name_or_path)
-        if is_pretraining:
-            for param in self.seq_encoder.parameters():
-                param.requires_grad = False
+        for param in self.seq_encoder.parameters():
+            param.requires_grad = False if freeze_enc else True
 
         cond_dim = self.seq_encoder.config.hidden_size
 
@@ -71,14 +70,16 @@ class SARFormer(nn.Module):
 
 
 @register_model
-def sarformer_s_mae(
-    channels: int,
+def sarformer_s(
+    in_channels: int,
+    out_channels: int,
+    is_pretraining: bool = False,
     **kwargs,
 ):
     model = SARFormer(
         t5_model_name_or_path="google/t5-v1_1-small",
-        in_channels=channels,
-        out_channels=channels,
+        in_channels=in_channels,
+        out_channels=out_channels,
         num_heads=8,
         mlp_ratio=4.0,
         qkv_bias=True,
@@ -88,7 +89,7 @@ def sarformer_s_mae(
         channel_mult=(1, 2, 4, 8, 16),
         drop_path_rate=0.0,
         act_layer=nn.SiLU,
-        is_pretraining=True,
+        freeze_enc=is_pretraining,
         **kwargs,
     )
     return model
