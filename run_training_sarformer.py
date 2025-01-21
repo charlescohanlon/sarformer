@@ -49,6 +49,7 @@ from src.utils.optim_factory import create_optimizer
 from src.utils import NativeScalerWithGradNormCount as NativeScaler
 
 import src.models.sarformer  # Needed for @register_model to work
+import src.models.point_regression_model
 
 
 def get_args():
@@ -1084,34 +1085,34 @@ def launch_evals(
         torch.cuda.empty_cache()
 
     # Evaluate image metrics
-    if launch_eval_metrics:
-        eval_metrics_results = eval_metrics(
-            model=model,
-            data_loader=data_loader_metrics,
-            device=device,
-            dtype=dtype,
-            compute_on_cpu=compute_metrics_on_cpu,
-            objective=objective,
-        )
-        all_eval_stats.update(eval_metrics_results)
-        model.train()
-        gc.collect()
-        torch.cuda.empty_cache()
+    # if launch_eval_metrics:
+    #     eval_metrics_results = eval_metrics(
+    #         model=model,
+    #         data_loader=data_loader_metrics,
+    #         device=device,
+    #         dtype=dtype,
+    #         compute_on_cpu=compute_metrics_on_cpu,
+    #         objective=objective,
+    #     )
+    #     all_eval_stats.update(eval_metrics_results)
+    #     model.train()
+    #     gc.collect()
+    #     torch.cuda.empty_cache()
 
     # Log images
-    if launch_eval_image_log:
-        eval_image_log(
-            model=model,
-            data_loader=data_loader_image_log,
-            device=device,
-            dtype=dtype,
-            num_logged_images=num_logged_images,
-            log_writer=log_writer,
-            objective=objective,
-        )
-        model.train()
-        gc.collect()
-        torch.cuda.empty_cache()
+    # if launch_eval_image_log:
+    # eval_image_log(
+    #     model=model,
+    #     data_loader=data_loader_image_log,
+    #     device=device,
+    #     dtype=dtype,
+    #     num_logged_images=num_logged_images,
+    #     log_writer=log_writer,
+    #     objective=objective,
+    # )
+    # model.train()
+    # gc.collect()
+    # torch.cuda.empty_cache()
 
     return all_eval_stats
 
@@ -1399,7 +1400,7 @@ def prep_inputs(
     if "caption" in x:
         seq_mods.append(x["caption"].to(device, non_blocking=True))
     # Concatenate along the sequence dimension
-    seq_input = torch.cat(seq_mods, dim=1)
+    seq_input = torch.cat(seq_mods, dim=1) if len(seq_mods) != 0 else None
 
     return spatial_input, seq_input
 
@@ -1437,39 +1438,52 @@ def distance_weighted_loss(
         reduction: Reduction type for the loss. Supported types are "mean", "sum", and "none".
     """
     with torch.no_grad():
-        H, W = logits.shape[-2:]
-        device = logits.device
-
-        # Row and column indice tensors
-        i = repeat(torch.arange(H, device=device), "h -> 1 1 h w", w=W)
-        j = repeat(torch.arange(W, device=device), "w -> 1 1 h w", h=H)
-
         # Index positions of the single non-zero value in the target distribution
-        a = target.argmax(dim=-2).max().item()
-        b = target.argmax(dim=-1).max().item()
+        target_ys = target.argmax(dim=2).max(dim=-1)
+        target_xs = target.argmax(dim=3).max(dim=-1)
 
-        if distance_type == "euclidean":
-            dists = torch.sqrt((i - a) ** 2 + (j - b) ** 2)  # (1, 1, H, W)
-        elif distance_type == "manhattan":
-            dists = torch.abs(i - a) + torch.abs(j - b)  # (1, 1, H, W)
-        elif distance_type == "none":
-            dists = torch.ones_like(logits, device=device)  # (B, C, H, W)
+        if loss_type != "none":
+            H, W = logits.shape[-2:]
+            device = logits.device
+            # Row and column indice tensors
+            i = repeat(torch.arange(H, device=device), "h -> 1 1 h w", w=W)
+            j = repeat(torch.arange(W, device=device), "w -> 1 1 h w", h=H)
+
+            if distance_type == "euclidean":
+                dists = torch.sqrt(
+                    (i - target_ys) ** 2 + (j - target_xs) ** 2
+                )  # (1, 1, H, W)
+            elif distance_type == "manhattan":
+                dists = torch.abs(i - target_ys) + torch.abs(
+                    j - target_xs
+                )  # (1, 1, H, W)
+            elif distance_type == "none":
+                dists = torch.ones_like(logits, device=device)  # (B, C, H, W)
+            else:
+                raise ValueError(f"Unsupported distance type: {distance_type}")
+
+    if loss_type != "none":
+        dists = dists / dists.max() + eps
+        pred = spatial_softmax(logits)
+
+        if loss_type == "bce":
+            loss = -dists * (
+                target * torch.log(pred) + (1 - target) * torch.log(1 - pred)
+            )
+        elif loss_type == "ce":
+            loss = -dists * target * torch.log(pred)
+        elif loss_type == "mse":
+            loss = dists * (target - pred) ** 2
         else:
-            raise ValueError(f"Unsupported distance type: {distance_type}")
-
-    dists = dists / dists.max() + eps
-    pred = spatial_softmax(logits)
-
-    if loss_type == "bce":
-        loss = -dists * (target * torch.log(pred) + (1 - target) * torch.log(1 - pred))
-    elif loss_type == "ce":
-        loss = -dists * target * torch.log(pred)
-    elif loss_type == "mse":
-        loss = dists * (target - pred) ** 2
+            raise ValueError(f"Unsupported loss type: {loss_type}")
+        loss = loss.sum(dim=(1, 2, 3))  # Sum over channel and spatial dimensions
     else:
-        raise ValueError(f"Unsupported loss type: {loss_type}")
-
-    loss = loss.sum(dim=(1, 2, 3))  # Sum over channel and spatial dimensions
+        if logits.ndim != 2 or logits.shape[1] != 2:
+            raise ValueError("Loss function expects regression on the point.")
+        pred_ys = logits[:, 0]
+        pred_xs = logits[:, 1]
+        loss = torch.sqrt((pred_ys - target_ys) ** 2 + (pred_xs - target_xs) ** 2)
+        loss = loss.sum(dim=1)
 
     # Reduce over batch dimension
     if reduction == "mean":
