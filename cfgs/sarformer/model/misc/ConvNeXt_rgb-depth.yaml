@@ -1,15 +1,13 @@
 run_name: auto
 
 # Model
-model: sarformer_s
-cond_domains: ["rgb", "depth", "caption"]
+model: convnext_t
+cond_domains: ["rgb", "depth"]
 target_size: 224
-finetune: "/scratch/bdej/cohanlon/checkpoints/sarformer/model/pretrain/S_MAE_rgb-depth-caption/checkpoint-final.pth"
 
 # Train
 objective: lpl
-loss_type: mse
-distance_type: euclidean
+loss_type: none # Regression on point
 dtype: bf16 # fp32, fp16 or bf16
 warmup_epochs: 10
 epochs: 100
@@ -19,7 +17,7 @@ blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
 batch_size: 32 # per GPU
-save_ckpt_freq: 25 # in epochs
+save_ckpt_freq: 10 # in epochs
 weight_decay: 0.05 # the default
 lr_and_wd_scheduler: cosine
 
@@ -32,16 +30,16 @@ vflip: 0.0
 
 # Eval
 eval_freq: 10
-eval_metrics_freq: 25
-eval_image_log_freq: 10
+eval_metrics_freq: 0
+eval_image_log_freq: 0
 num_eval_metrics_samples: 416 # Number of samples to use for evaluating image metrics during training.
-num_logged_images: 9
+num_logged_images: 0
 dist_eval: True
 data_path: '/scratch/bdej/cohanlon/data/train'
 eval_data_path: '/scratch/bdej/cohanlon/data/eval'
 
 # Logging
-log_wandb: True
+log_wandb: False
 wandb_project: model
 wandb_entity: sarformer
 wandb_run_name: auto
@@ -50,5 +48,5 @@ show_user_warnings: False
 compute_grad_norm: True
 
 # Misc.
-device: cuda
+device: cpu
 num_workers: 110 # for data loaders
