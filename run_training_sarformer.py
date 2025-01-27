@@ -512,7 +512,10 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             drop_last=False,
         )
 
-        if args.num_eval_metrics_samples is not None:
+        if (
+            args.num_eval_metrics_samples is not None
+            and args.num_eval_metrics_samples > 0
+        ):
             dataset_metrics = MultiModalDatasetFolder(
                 root=args.eval_data_path,
                 modalities=args.all_domains,
@@ -547,9 +550,9 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
                 drop_last=False,
             )
         else:
-            data_loader_metrics = data_loader_val
+            data_loader_metrics = None
 
-        if args.num_logged_images is not None:
+        if args.num_logged_images is not None and args.num_logged_images > 0:
             dataset_image_log = MultiModalDatasetFolder(
                 root=args.eval_data_path,
                 modalities=args.all_domains,
@@ -571,7 +574,7 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
                 drop_last=False,
             )
         else:
-            data_loader_image_log = data_loader_val
+            data_loader_image_log = None
     else:
         print("Warning: No evaluation data loader provided.")
         data_loader_val = None
@@ -713,7 +716,7 @@ def main(args):
     )
 
     if args.distributed:
-        model = DDP(model, device_ids=[args.gpu])
+        model = DDP(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
     optimizer = create_optimizer(args, model_without_ddp)
@@ -778,8 +781,8 @@ def main(args):
             raise ValueError("No evaluation data loader provided for eval only mode.")
         eval_stats = launch_evals(
             launch_eval=True,
-            launch_eval_metrics=True,
-            launch_eval_image_log=True,
+            launch_eval_metrics=data_loader_metrics is not None,
+            launch_eval_image_log=data_loader_image_log is not None,
             model=model,
             device=device,
             dtype=dtype,
@@ -1085,34 +1088,34 @@ def launch_evals(
         torch.cuda.empty_cache()
 
     # Evaluate image metrics
-    # if launch_eval_metrics:
-    #     eval_metrics_results = eval_metrics(
-    #         model=model,
-    #         data_loader=data_loader_metrics,
-    #         device=device,
-    #         dtype=dtype,
-    #         compute_on_cpu=compute_metrics_on_cpu,
-    #         objective=objective,
-    #     )
-    #     all_eval_stats.update(eval_metrics_results)
-    #     model.train()
-    #     gc.collect()
-    #     torch.cuda.empty_cache()
+    if launch_eval_metrics:
+        eval_metrics_results = eval_metrics(
+            model=model,
+            data_loader=data_loader_metrics,
+            device=device,
+            dtype=dtype,
+            compute_on_cpu=compute_metrics_on_cpu,
+            objective=objective,
+        )
+        all_eval_stats.update(eval_metrics_results)
+        model.train()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     # Log images
-    # if launch_eval_image_log:
-    # eval_image_log(
-    #     model=model,
-    #     data_loader=data_loader_image_log,
-    #     device=device,
-    #     dtype=dtype,
-    #     num_logged_images=num_logged_images,
-    #     log_writer=log_writer,
-    #     objective=objective,
-    # )
-    # model.train()
-    # gc.collect()
-    # torch.cuda.empty_cache()
+    if launch_eval_image_log:
+        eval_image_log(
+            model=model,
+            data_loader=data_loader_image_log,
+            device=device,
+            dtype=dtype,
+            num_logged_images=num_logged_images,
+            log_writer=log_writer,
+            objective=objective,
+        )
+    model.train()
+    gc.collect()
+    torch.cuda.empty_cache()
 
     return all_eval_stats
 
@@ -1429,7 +1432,7 @@ def distance_weighted_loss(
     distribution and the target one-hot distribution.
 
     Args:
-        logits:  spatial distribution. Shape (B, C, H, W)
+        logits:  spatial distribution. Shape (B, C, H, W) or (B, 2) for regression on point.
         target: Target one-hot distribution. Shape (B, C, H, W)
         loss_type: Type of loss to use. Supported types are "bce" (binary cross-entropy)
                 "ce" (cross-entropy) and "mse" (mean-squared error).
@@ -1437,10 +1440,18 @@ def distance_weighted_loss(
         eps: Small constant to avoid division by zero.
         reduction: Reduction type for the loss. Supported types are "mean", "sum", and "none".
     """
+    if loss_type == "none" and logits.ndim != 2:
+        raise ValueError(
+            f"Loss function expects input for regression on point (B, 2). Got {logits.shape}"
+        )
+    elif loss_type != "none" and logits.ndim != 4:
+        raise ValueError(
+            f"Loss function expects spatial distribution (B, C, H, W). Got {logits.shape}"
+        )
     with torch.no_grad():
         # Index positions of the single non-zero value in the target distribution
-        target_ys = target.argmax(dim=2).max(dim=-1)
-        target_xs = target.argmax(dim=3).max(dim=-1)
+        target_ys = target.argmax(dim=2).max(dim=-1)[0].squeeze(-1).float()
+        target_xs = target.argmax(dim=3).max(dim=-1)[0].squeeze(-1).float()
 
         if loss_type != "none":
             H, W = logits.shape[-2:]
@@ -1461,6 +1472,8 @@ def distance_weighted_loss(
                 dists = torch.ones_like(logits, device=device)  # (B, C, H, W)
             else:
                 raise ValueError(f"Unsupported distance type: {distance_type}")
+        else:
+            target_coords = torch.stack([target_ys, target_xs], dim=1)
 
     if loss_type != "none":
         dists = dists / dists.max() + eps
@@ -1478,12 +1491,7 @@ def distance_weighted_loss(
             raise ValueError(f"Unsupported loss type: {loss_type}")
         loss = loss.sum(dim=(1, 2, 3))  # Sum over channel and spatial dimensions
     else:
-        if logits.ndim != 2 or logits.shape[1] != 2:
-            raise ValueError("Loss function expects regression on the point.")
-        pred_ys = logits[:, 0]
-        pred_xs = logits[:, 1]
-        loss = torch.sqrt((pred_ys - target_ys) ** 2 + (pred_xs - target_xs) ** 2)
-        loss = loss.sum(dim=1)
+        loss = torch.norm(target_coords - logits, dim=1)  # l2 norm (by default)
 
     # Reduce over batch dimension
     if reduction == "mean":

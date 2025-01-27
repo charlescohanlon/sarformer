@@ -9,15 +9,15 @@ target_size: 224
 objective: lpl
 loss_type: none # Regression on point
 dtype: bf16 # fp32, fp16 or bf16
-warmup_epochs: 10
-epochs: 100
+warmup_epochs: 0
+epochs: 5
 opt: adamw
 opt_betas: [0.9, 0.99]
 blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
 warmup_lr: 0.000001 # 1e-6
 min_lr: 0.
-batch_size: 32 # per GPU
-save_ckpt_freq: 10 # in epochs
+batch_size: 512 # per GPU
+save_ckpt_freq: 100 # in epochs
 weight_decay: 0.05 # the default
 lr_and_wd_scheduler: cosine
 
@@ -29,7 +29,7 @@ hflip: 0.0
 vflip: 0.0
 
 # Eval
-eval_freq: 10
+eval_freq: 2
 eval_metrics_freq: 0
 eval_image_log_freq: 0
 num_eval_metrics_samples: 416 # Number of samples to use for evaluating image metrics during training.
@@ -48,5 +48,5 @@ show_user_warnings: False
 compute_grad_norm: True
 
 # Misc.
-device: cpu
-num_workers: 110 # for data loaders
+device: cuda
+num_workers: 59 # for data loaders
