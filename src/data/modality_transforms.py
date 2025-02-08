@@ -405,6 +405,8 @@ class TargetDistributionTransform(ImageTransform):
             raise ValueError("Flipping target distribution is not supported")
         row, col = crop_coords
         img = img[row : row + target_size, col : col + target_size]
+        if (img == 0).all():
+            raise ValueError(f"Crop coords row: {row}, col: {col} are invalid")
         return img
 
     def postprocess(self, sample):

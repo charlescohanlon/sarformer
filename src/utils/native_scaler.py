@@ -36,6 +36,8 @@ class NativeScalerWithGradNormCount:
         update_grad=True,
         compute_grad_norm=True,
     ):
+        if optimizer is None:
+            return None
         self._scaler.scale(loss).backward(create_graph=create_graph)
         if update_grad:
             if clip_grad is not None:
