@@ -35,7 +35,6 @@ class CropImageAugmenter(AbstractImageAugmenter):
         img_size,
         eff_img_size=None,
         target_size=224,
-        random_crop_std=1e12,
         hflip=0.0,
         vflip=0.0,
     ):
@@ -45,15 +44,12 @@ class CropImageAugmenter(AbstractImageAugmenter):
             eff_img_size: size of the effective image. Equivalent to taking a center crop
                 of full image before cropping. If None, defaults to img_size.
             target_size: size of the output image after cropping
-            random_crop_std: standard deviation of the normal distribution used for random cropping.
-                Default of 1e12 results in near uniform sampling.
             hflip: probability of horizontal flipping
             vflip: probability of vertical flipping
         """
         self.img_size = img_size
         self.eff_img_size = img_size if eff_img_size is None else eff_img_size
         self.target_size = target_size
-        self.crop_std = random_crop_std
         self.hflip = hflip
         self.vflip = vflip
 
@@ -62,15 +58,9 @@ class CropImageAugmenter(AbstractImageAugmenter):
         start = (self.img_size - self.eff_img_size) // 2
         end = self.img_size - start - self.target_size
 
-        mean = (start + end) / 2
-
-        # compute bounds of truncated normal distribution in stds
-        lower_std = (start - mean) / self.crop_std
-        upper_std = (end - mean) / self.crop_std
-
         # sample truncated normal distribution and round to discretize it
-        top = round(truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std))
-        left = round(truncnorm.rvs(lower_std, upper_std, loc=mean, scale=self.crop_std))
+        top = random.randint(start, end)
+        left = random.randint(start, end)
         hflip = random.random() < self.hflip
         vflip = random.random() < self.vflip
 

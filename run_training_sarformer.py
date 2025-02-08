@@ -167,14 +167,14 @@ def get_args():
         choices=["mae", "lpl", "lost-person location"],
         help="Objective to train the model on (default: %(default)s)",
     )
+    parser.add_argument(
+        "--is_baseline",
+        type=bool,
+        default=False,
+        help="Whether or not the model is a baseline model.",
+    )
 
     # Augmentation
-    parser.add_argument(
-        "--crop_std",
-        default="1e16",
-        type=str,  # converted to float
-        help="Standard deviation of random crop Gaussian sampling (default: %(default)s)",
-    )
     parser.add_argument(
         "--hflip",
         default=0.0,
@@ -427,9 +427,6 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
     if args.eff_img_size is None:
         args.eff_img_size = args.full_img_size
 
-    # to allow --crop_std to be scientific notation
-    args.crop_std = float(args.crop_std)
-
     # used to set return path to get the rgb counterpart for overlaid images
     using_overlaid_imgs = args.objective == "lpl"
 
@@ -439,7 +436,6 @@ def setup_data(args, num_tasks: int, global_rank: int, sampler_rank: int):
             img_size=args.full_img_size,
             eff_img_size=args.eff_img_size,
             target_size=args.target_size,
-            random_crop_std=args.crop_std,
             hflip=args.hflip,
             vflip=args.vflip,
         ),
@@ -719,7 +715,7 @@ def main(args):
         model = DDP(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
-    optimizer = create_optimizer(args, model_without_ddp)
+    optimizer = create_optimizer(args, model_without_ddp, is_baseline=args.is_baseline)
     loss_scaler = NativeScaler(enabled=dtype == torch.float16)
 
     # LR and WD schedules
@@ -1422,9 +1418,8 @@ def spatial_softmax(x):
 def distance_weighted_loss(
     logits,
     target,
-    loss_type="bce",
+    loss_type="mse",
     distance_type="euclidean",
-    eps=1e-6,
     reduction="mean",
 ):
     """
@@ -1450,43 +1445,40 @@ def distance_weighted_loss(
         )
     with torch.no_grad():
         # Index positions of the single non-zero value in the target distribution
-        target_ys = target.argmax(dim=2).max(dim=-1)[0].squeeze(-1).float()
-        target_xs = target.argmax(dim=3).max(dim=-1)[0].squeeze(-1).float()
+        target_ys = target.argmax(dim=2).max(dim=-1)[0].squeeze(-1)
+        target_xs = target.argmax(dim=3).max(dim=-1)[0].squeeze(-1)
 
+        device = logits.device
         if loss_type != "none":
-            H, W = logits.shape[-2:]
-            device = logits.device
+            B, _, H, W = logits.shape
             # Row and column indice tensors
-            i = repeat(torch.arange(H, device=device), "h -> 1 1 h w", w=W)
-            j = repeat(torch.arange(W, device=device), "w -> 1 1 h w", h=H)
+            i = repeat(torch.arange(H, device=device), "h -> b 1 h w", b=B, w=W)
+            j = repeat(torch.arange(W, device=device), "w -> b 1 h w", b=B, h=H)
+            target_ys = repeat(target_ys, "b -> b 1 h w", h=H, w=W)
+            target_xs = repeat(target_xs, "b -> b 1 h w", h=H, w=W)
 
             if distance_type == "euclidean":
-                dists = torch.sqrt(
-                    (i - target_ys) ** 2 + (j - target_xs) ** 2
-                )  # (1, 1, H, W)
+                dists = torch.sqrt((i - target_ys) ** 2 + (j - target_xs) ** 2).float()
             elif distance_type == "manhattan":
-                dists = torch.abs(i - target_ys) + torch.abs(
-                    j - target_xs
-                )  # (1, 1, H, W)
+                dists = torch.abs(i - target_ys) + torch.abs(j - target_xs)
             elif distance_type == "none":
-                dists = torch.ones_like(logits, device=device)  # (B, C, H, W)
+                dists = torch.ones_like(logits, device=device).float()  # (B, C, H, W)
             else:
                 raise ValueError(f"Unsupported distance type: {distance_type}")
         else:
-            target_coords = torch.stack([target_ys, target_xs], dim=1)
+            target_coords = torch.stack([target_ys, target_xs], dim=1).to(
+                device=device, dtype=torch.float, non_blocking=True
+            )
 
     if loss_type != "none":
-        dists = dists / dists.max() + eps
-        pred = spatial_softmax(logits)
+        max_dists = dists.flatten(-2).max(dim=-1).values[:, None, None]
+        dists = dists / max_dists + 1
+        pred = spatial_softmax(logits).float()
 
-        if loss_type == "bce":
-            loss = -dists * (
-                target * torch.log(pred) + (1 - target) * torch.log(1 - pred)
-            )
-        elif loss_type == "ce":
-            loss = -dists * target * torch.log(pred)
-        elif loss_type == "mse":
-            loss = dists * (target - pred) ** 2
+        if loss_type == "mse":
+            if distance_type == "none":
+                return F.mse_loss(pred, target.float())  # FOR TESTING PURPOSES
+            loss = dists * F.mse_loss(pred, target.float(), reduction="none")
         else:
             raise ValueError(f"Unsupported loss type: {loss_type}")
         loss = loss.sum(dim=(1, 2, 3))  # Sum over channel and spatial dimensions
