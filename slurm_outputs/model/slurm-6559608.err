@@ -1,0 +1,113 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.1   6) default-s11
+
+ 
+
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+wandb: Currently logged in as: charlescohanlon (sarformer). Use `wandb login --relogin` to force relogin
+wandb: wandb version 0.19.5 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.17.5
+wandb: Run data is saved locally in /u/cohanlon/sarformer/wandb/run-20250201_071344-lr9gvpiq
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run finetune/S_MAE_instability_rgb-depth-caption
+wandb: ⭐️ View project at https://wandb.ai/sarformer/model
+wandb: 🚀 View run at https://wandb.ai/sarformer/model/runs/lr9gvpiq
+/u/cohanlon/sarformer/run_training_sarformer.py:678: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location="cpu")
+[rank1]:[W201 07:14:57.923177327 reducer.cpp:1400] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[rank4]:[W201 07:15:00.244819676 reducer.cpp:1400] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[rank3]:[W201 07:15:05.824450471 reducer.cpp:1400] Warning: find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass. This flag results in an extra traversal of the autograd graph every iteration,  which can adversely affect performance. If your model indeed never has any unused parameters in the forward pass, consider turning this flag off. Note that this warning may be a false positive if your model has flow control causing later iterations to have unused parameters. (function operator())
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank1]:     main(args)
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 800, in main
+[rank1]:     train_stats = train_one_epoch(
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 970, in train_one_epoch
+[rank1]:     grad_norm = loss_scaler(
+[rank1]:   File "/u/cohanlon/sarformer/src/utils/native_scaler.py", line 39, in __call__
+[rank1]:     self._scaler.scale(loss).backward(create_graph=create_graph)
+[rank1]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/_tensor.py", line 521, in backward
+[rank1]:     torch.autograd.backward(
+[rank1]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank1]:     _engine_run_backward(
+[rank1]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank1]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank1]: RuntimeError: Found dtype Double but expected Float
+[rank4]: Traceback (most recent call last):
+[rank4]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank4]:     main(args)
+[rank4]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 800, in main
+[rank4]:     train_stats = train_one_epoch(
+[rank4]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 970, in train_one_epoch
+[rank4]:     grad_norm = loss_scaler(
+[rank4]:   File "/u/cohanlon/sarformer/src/utils/native_scaler.py", line 39, in __call__
+[rank4]:     self._scaler.scale(loss).backward(create_graph=create_graph)
+[rank4]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/_tensor.py", line 521, in backward
+[rank4]:     torch.autograd.backward(
+[rank4]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank4]:     _engine_run_backward(
+[rank4]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank4]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank4]: RuntimeError: Found dtype Double but expected Float
+W0201 07:15:16.045488 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027073 closing signal SIGTERM
+W0201 07:15:16.065909 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027075 closing signal SIGTERM
+W0201 07:15:16.068439 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027076 closing signal SIGTERM
+W0201 07:15:16.072328 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027077 closing signal SIGTERM
+W0201 07:15:16.072472 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027078 closing signal SIGTERM
+W0201 07:15:16.074965 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027142 closing signal SIGTERM
+W0201 07:15:16.076575 139713177347904 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1027161 closing signal SIGTERM
+E0201 07:15:21.544293 139713177347904 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 1 (pid: 1027074) of binary: /u/cohanlon/micromamba/envs/sarformer/bin/python3.9
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+run_training_sarformer.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-02-01_07:15:16
+  host      : gpuc04.delta.ncsa.illinois.edu
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 1027074)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

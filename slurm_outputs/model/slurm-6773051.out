@@ -1,0 +1,797 @@
+job is starting on gpuc05.delta.ncsa.illinois.edu
+| distributed init (rank 0): env://, gpu 0
+| distributed init (rank 4): env://, gpu 4
+| distributed init (rank 6): env://, gpu 6
+| distributed init (rank 2): env://, gpu 2
+| distributed init (rank 1): env://, gpu 1
+| distributed init (rank 7): env://, gpu 7
+| distributed init (rank 3): env://, gpu 3
+| distributed init (rank 5): env://, gpu 5
+dataset_train size = 40780
+dataset_val size = 416
+Namespace(run_name='model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2', batch_size=128, full_img_size=673, eff_img_size=447, target_size=224, mask_proportion=0.6, patch_size=None, epochs=500, accum_iter=1, save_ckpt_freq=25, model='convnext_gatedmlp_b', dtype='bf16', cond_domains=['depth'], loss_type='none', distance_type='euclidean', objective='lpl', is_baseline=False, hflip=0.0, vflip=0.0, finetune='', opt='adamw', opt_eps=1e-08, opt_betas=[0.9, 0.99], compute_grad_norm=True, clip_grad=None, skip_grad=None, momentum=0.9, weight_decay=0.05, weight_decay_end=None, blr=0.0001, min_blr=0.0, lr_and_wd_scheduler='cosine', warmup_epochs=0, cooldown_epochs=10, eval_data_path='/scratch/bdej/cohanlon/data/eval', num_eval_metrics_samples=416, num_logged_images=0, eval_batch_size=None, eval_freq=25, eval_metric_freq=10, eval_image_log_freq=0, dist_eval=True, eval_only=False, output_dir='/scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2', device='cuda', seed=0, start_epoch=0, num_workers=110, pin_mem=True, show_user_warnings=False, log_wandb=True, wandb_project='model', wandb_entity='sarformer', wandb_run_name='misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2', dist_url='env://', print_all=False, warmup_lr=1e-06, min_lr=0.0, eval_metrics_freq=0, data_path='/scratch/bdej/cohanlon/data/train', config_path='cfgs/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2.yaml', rank=0, world_size=8, gpu=0, distributed=True, dist_backend='nccl', all_domains=['depth', 'target_distribution'], is_pretraining=False)
+Creating model: convnext_gatedmlp_b conditioned on ['depth']
+Model = PointRegressionModel(
+  (backbone): ConvNextV2Model(
+    (embeddings): ConvNextV2Embeddings(
+      (patch_embeddings): Conv2d(1, 128, kernel_size=(4, 4), stride=(4, 4))
+      (layernorm): ConvNextV2LayerNorm()
+    )
+    (encoder): ConvNextV2Encoder(
+      (stages): ModuleList(
+        (0): ConvNextV2Stage(
+          (downsampling_layer): Identity()
+          (layers): Sequential(
+            (0): ConvNextV2Layer(
+              (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+              (drop_path): Identity()
+            )
+            (1): ConvNextV2Layer(
+              (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+              (drop_path): Identity()
+            )
+            (2): ConvNextV2Layer(
+              (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+              (drop_path): Identity()
+            )
+          )
+        )
+        (1): ConvNextV2Stage(
+          (downsampling_layer): Sequential(
+            (0): ConvNextV2LayerNorm()
+            (1): Conv2d(128, 256, kernel_size=(2, 2), stride=(2, 2))
+          )
+          (layers): Sequential(
+            (0): ConvNextV2Layer(
+              (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+              (drop_path): Identity()
+            )
+            (1): ConvNextV2Layer(
+              (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+              (drop_path): Identity()
+            )
+            (2): ConvNextV2Layer(
+              (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+              (drop_path): Identity()
+            )
+          )
+        )
+        (2): ConvNextV2Stage(
+          (downsampling_layer): Sequential(
+            (0): ConvNextV2LayerNorm()
+            (1): Conv2d(256, 512, kernel_size=(2, 2), stride=(2, 2))
+          )
+          (layers): Sequential(
+            (0): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (1): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (2): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (3): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (4): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (5): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (6): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (7): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (8): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (9): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (10): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (11): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (12): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (13): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (14): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (15): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (16): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (17): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (18): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (19): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (20): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (21): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (22): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (23): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (24): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (25): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+            (26): ConvNextV2Layer(
+              (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+              (drop_path): Identity()
+            )
+          )
+        )
+        (3): ConvNextV2Stage(
+          (downsampling_layer): Sequential(
+            (0): ConvNextV2LayerNorm()
+            (1): Conv2d(512, 1024, kernel_size=(2, 2), stride=(2, 2))
+          )
+          (layers): Sequential(
+            (0): ConvNextV2Layer(
+              (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+              (drop_path): Identity()
+            )
+            (1): ConvNextV2Layer(
+              (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+              (drop_path): Identity()
+            )
+            (2): ConvNextV2Layer(
+              (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+              (layernorm): ConvNextV2LayerNorm()
+              (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+              (act): GELUActivation()
+              (grn): ConvNextV2GRN()
+              (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+              (drop_path): Identity()
+            )
+          )
+        )
+      )
+    )
+    (layernorm): LayerNorm((1024,), eps=1e-12, elementwise_affine=True)
+  )
+  (gap): AvgPool2d(kernel_size=(7, 7), stride=(7, 7), padding=0)
+  (head): GatedMlp(
+    (fc1): Linear(in_features=1024, out_features=682, bias=True)
+    (act): SiLU()
+    (fc2): Linear(in_features=682, out_features=2, bias=True)
+    (fc3): Linear(in_features=1024, out_features=682, bias=True)
+  )
+)
+Number of params: 89.08817 M
+LR = 0.00040000
+Min LR = 0.00000000
+Total (effective) batch size = 1024
+Accumulate grad iterations = 1
+Number of training steps = 39
+Number of training examples per epoch = 39936
+Param groups = {
+  "decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "backbone.embeddings.patch_embeddings.weight",
+      "backbone.encoder.stages.0.layers.0.dwconv.weight",
+      "backbone.encoder.stages.0.layers.0.pwconv1.weight",
+      "backbone.encoder.stages.0.layers.0.grn.weight",
+      "backbone.encoder.stages.0.layers.0.pwconv2.weight",
+      "backbone.encoder.stages.0.layers.1.dwconv.weight",
+      "backbone.encoder.stages.0.layers.1.pwconv1.weight",
+      "backbone.encoder.stages.0.layers.1.grn.weight",
+      "backbone.encoder.stages.0.layers.1.pwconv2.weight",
+      "backbone.encoder.stages.0.layers.2.dwconv.weight",
+      "backbone.encoder.stages.0.layers.2.pwconv1.weight",
+      "backbone.encoder.stages.0.layers.2.grn.weight",
+      "backbone.encoder.stages.0.layers.2.pwconv2.weight",
+      "backbone.encoder.stages.1.downsampling_layer.0.weight",
+      "backbone.encoder.stages.1.downsampling_layer.1.weight",
+      "backbone.encoder.stages.1.layers.0.dwconv.weight",
+      "backbone.encoder.stages.1.layers.0.pwconv1.weight",
+      "backbone.encoder.stages.1.layers.0.grn.weight",
+      "backbone.encoder.stages.1.layers.0.pwconv2.weight",
+      "backbone.encoder.stages.1.layers.1.dwconv.weight",
+      "backbone.encoder.stages.1.layers.1.pwconv1.weight",
+      "backbone.encoder.stages.1.layers.1.grn.weight",
+      "backbone.encoder.stages.1.layers.1.pwconv2.weight",
+      "backbone.encoder.stages.1.layers.2.dwconv.weight",
+      "backbone.encoder.stages.1.layers.2.pwconv1.weight",
+      "backbone.encoder.stages.1.layers.2.grn.weight",
+      "backbone.encoder.stages.1.layers.2.pwconv2.weight",
+      "backbone.encoder.stages.2.downsampling_layer.0.weight",
+      "backbone.encoder.stages.2.downsampling_layer.1.weight",
+      "backbone.encoder.stages.2.layers.0.dwconv.weight",
+      "backbone.encoder.stages.2.layers.0.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.0.grn.weight",
+      "backbone.encoder.stages.2.layers.0.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.1.dwconv.weight",
+      "backbone.encoder.stages.2.layers.1.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.1.grn.weight",
+      "backbone.encoder.stages.2.layers.1.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.2.dwconv.weight",
+      "backbone.encoder.stages.2.layers.2.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.2.grn.weight",
+      "backbone.encoder.stages.2.layers.2.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.3.dwconv.weight",
+      "backbone.encoder.stages.2.layers.3.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.3.grn.weight",
+      "backbone.encoder.stages.2.layers.3.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.4.dwconv.weight",
+      "backbone.encoder.stages.2.layers.4.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.4.grn.weight",
+      "backbone.encoder.stages.2.layers.4.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.5.dwconv.weight",
+      "backbone.encoder.stages.2.layers.5.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.5.grn.weight",
+      "backbone.encoder.stages.2.layers.5.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.6.dwconv.weight",
+      "backbone.encoder.stages.2.layers.6.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.6.grn.weight",
+      "backbone.encoder.stages.2.layers.6.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.7.dwconv.weight",
+      "backbone.encoder.stages.2.layers.7.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.7.grn.weight",
+      "backbone.encoder.stages.2.layers.7.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.8.dwconv.weight",
+      "backbone.encoder.stages.2.layers.8.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.8.grn.weight",
+      "backbone.encoder.stages.2.layers.8.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.9.dwconv.weight",
+      "backbone.encoder.stages.2.layers.9.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.9.grn.weight",
+      "backbone.encoder.stages.2.layers.9.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.10.dwconv.weight",
+      "backbone.encoder.stages.2.layers.10.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.10.grn.weight",
+      "backbone.encoder.stages.2.layers.10.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.11.dwconv.weight",
+      "backbone.encoder.stages.2.layers.11.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.11.grn.weight",
+      "backbone.encoder.stages.2.layers.11.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.12.dwconv.weight",
+      "backbone.encoder.stages.2.layers.12.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.12.grn.weight",
+      "backbone.encoder.stages.2.layers.12.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.13.dwconv.weight",
+      "backbone.encoder.stages.2.layers.13.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.13.grn.weight",
+      "backbone.encoder.stages.2.layers.13.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.14.dwconv.weight",
+      "backbone.encoder.stages.2.layers.14.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.14.grn.weight",
+      "backbone.encoder.stages.2.layers.14.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.15.dwconv.weight",
+      "backbone.encoder.stages.2.layers.15.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.15.grn.weight",
+      "backbone.encoder.stages.2.layers.15.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.16.dwconv.weight",
+      "backbone.encoder.stages.2.layers.16.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.16.grn.weight",
+      "backbone.encoder.stages.2.layers.16.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.17.dwconv.weight",
+      "backbone.encoder.stages.2.layers.17.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.17.grn.weight",
+      "backbone.encoder.stages.2.layers.17.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.18.dwconv.weight",
+      "backbone.encoder.stages.2.layers.18.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.18.grn.weight",
+      "backbone.encoder.stages.2.layers.18.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.19.dwconv.weight",
+      "backbone.encoder.stages.2.layers.19.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.19.grn.weight",
+      "backbone.encoder.stages.2.layers.19.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.20.dwconv.weight",
+      "backbone.encoder.stages.2.layers.20.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.20.grn.weight",
+      "backbone.encoder.stages.2.layers.20.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.21.dwconv.weight",
+      "backbone.encoder.stages.2.layers.21.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.21.grn.weight",
+      "backbone.encoder.stages.2.layers.21.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.22.dwconv.weight",
+      "backbone.encoder.stages.2.layers.22.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.22.grn.weight",
+      "backbone.encoder.stages.2.layers.22.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.23.dwconv.weight",
+      "backbone.encoder.stages.2.layers.23.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.23.grn.weight",
+      "backbone.encoder.stages.2.layers.23.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.24.dwconv.weight",
+      "backbone.encoder.stages.2.layers.24.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.24.grn.weight",
+      "backbone.encoder.stages.2.layers.24.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.25.dwconv.weight",
+      "backbone.encoder.stages.2.layers.25.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.25.grn.weight",
+      "backbone.encoder.stages.2.layers.25.pwconv2.weight",
+      "backbone.encoder.stages.2.layers.26.dwconv.weight",
+      "backbone.encoder.stages.2.layers.26.pwconv1.weight",
+      "backbone.encoder.stages.2.layers.26.grn.weight",
+      "backbone.encoder.stages.2.layers.26.pwconv2.weight",
+      "backbone.encoder.stages.3.downsampling_layer.0.weight",
+      "backbone.encoder.stages.3.downsampling_layer.1.weight",
+      "backbone.encoder.stages.3.layers.0.dwconv.weight",
+      "backbone.encoder.stages.3.layers.0.pwconv1.weight",
+      "backbone.encoder.stages.3.layers.0.grn.weight",
+      "backbone.encoder.stages.3.layers.0.pwconv2.weight",
+      "backbone.encoder.stages.3.layers.1.dwconv.weight",
+      "backbone.encoder.stages.3.layers.1.pwconv1.weight",
+      "backbone.encoder.stages.3.layers.1.grn.weight",
+      "backbone.encoder.stages.3.layers.1.pwconv2.weight",
+      "backbone.encoder.stages.3.layers.2.dwconv.weight",
+      "backbone.encoder.stages.3.layers.2.pwconv1.weight",
+      "backbone.encoder.stages.3.layers.2.grn.weight",
+      "backbone.encoder.stages.3.layers.2.pwconv2.weight",
+      "head.fc1.weight",
+      "head.fc2.weight",
+      "head.fc3.weight"
+    ],
+    "lr_scale": 1.0
+  },
+  "no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "backbone.embeddings.patch_embeddings.bias",
+      "backbone.embeddings.layernorm.weight",
+      "backbone.embeddings.layernorm.bias",
+      "backbone.encoder.stages.0.layers.0.dwconv.bias",
+      "backbone.encoder.stages.0.layers.0.layernorm.weight",
+      "backbone.encoder.stages.0.layers.0.layernorm.bias",
+      "backbone.encoder.stages.0.layers.0.pwconv1.bias",
+      "backbone.encoder.stages.0.layers.0.grn.bias",
+      "backbone.encoder.stages.0.layers.0.pwconv2.bias",
+      "backbone.encoder.stages.0.layers.1.dwconv.bias",
+      "backbone.encoder.stages.0.layers.1.layernorm.weight",
+      "backbone.encoder.stages.0.layers.1.layernorm.bias",
+      "backbone.encoder.stages.0.layers.1.pwconv1.bias",
+      "backbone.encoder.stages.0.layers.1.grn.bias",
+      "backbone.encoder.stages.0.layers.1.pwconv2.bias",
+      "backbone.encoder.stages.0.layers.2.dwconv.bias",
+      "backbone.encoder.stages.0.layers.2.layernorm.weight",
+      "backbone.encoder.stages.0.layers.2.layernorm.bias",
+      "backbone.encoder.stages.0.layers.2.pwconv1.bias",
+      "backbone.encoder.stages.0.layers.2.grn.bias",
+      "backbone.encoder.stages.0.layers.2.pwconv2.bias",
+      "backbone.encoder.stages.1.downsampling_layer.0.bias",
+      "backbone.encoder.stages.1.downsampling_layer.1.bias",
+      "backbone.encoder.stages.1.layers.0.dwconv.bias",
+      "backbone.encoder.stages.1.layers.0.layernorm.weight",
+      "backbone.encoder.stages.1.layers.0.layernorm.bias",
+      "backbone.encoder.stages.1.layers.0.pwconv1.bias",
+      "backbone.encoder.stages.1.layers.0.grn.bias",
+      "backbone.encoder.stages.1.layers.0.pwconv2.bias",
+      "backbone.encoder.stages.1.layers.1.dwconv.bias",
+      "backbone.encoder.stages.1.layers.1.layernorm.weight",
+      "backbone.encoder.stages.1.layers.1.layernorm.bias",
+      "backbone.encoder.stages.1.layers.1.pwconv1.bias",
+      "backbone.encoder.stages.1.layers.1.grn.bias",
+      "backbone.encoder.stages.1.layers.1.pwconv2.bias",
+      "backbone.encoder.stages.1.layers.2.dwconv.bias",
+      "backbone.encoder.stages.1.layers.2.layernorm.weight",
+      "backbone.encoder.stages.1.layers.2.layernorm.bias",
+      "backbone.encoder.stages.1.layers.2.pwconv1.bias",
+      "backbone.encoder.stages.1.layers.2.grn.bias",
+      "backbone.encoder.stages.1.layers.2.pwconv2.bias",
+      "backbone.encoder.stages.2.downsampling_layer.0.bias",
+      "backbone.encoder.stages.2.downsampling_layer.1.bias",
+      "backbone.encoder.stages.2.layers.0.dwconv.bias",
+      "backbone.encoder.stages.2.layers.0.layernorm.weight",
+      "backbone.encoder.stages.2.layers.0.layernorm.bias",
+      "backbone.encoder.stages.2.layers.0.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.0.grn.bias",
+      "backbone.encoder.stages.2.layers.0.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.1.dwconv.bias",
+      "backbone.encoder.stages.2.layers.1.layernorm.weight",
+      "backbone.encoder.stages.2.layers.1.layernorm.bias",
+      "backbone.encoder.stages.2.layers.1.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.1.grn.bias",
+      "backbone.encoder.stages.2.layers.1.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.2.dwconv.bias",
+      "backbone.encoder.stages.2.layers.2.layernorm.weight",
+      "backbone.encoder.stages.2.layers.2.layernorm.bias",
+      "backbone.encoder.stages.2.layers.2.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.2.grn.bias",
+      "backbone.encoder.stages.2.layers.2.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.3.dwconv.bias",
+      "backbone.encoder.stages.2.layers.3.layernorm.weight",
+      "backbone.encoder.stages.2.layers.3.layernorm.bias",
+      "backbone.encoder.stages.2.layers.3.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.3.grn.bias",
+      "backbone.encoder.stages.2.layers.3.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.4.dwconv.bias",
+      "backbone.encoder.stages.2.layers.4.layernorm.weight",
+      "backbone.encoder.stages.2.layers.4.layernorm.bias",
+      "backbone.encoder.stages.2.layers.4.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.4.grn.bias",
+      "backbone.encoder.stages.2.layers.4.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.5.dwconv.bias",
+      "backbone.encoder.stages.2.layers.5.layernorm.weight",
+      "backbone.encoder.stages.2.layers.5.layernorm.bias",
+      "backbone.encoder.stages.2.layers.5.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.5.grn.bias",
+      "backbone.encoder.stages.2.layers.5.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.6.dwconv.bias",
+      "backbone.encoder.stages.2.layers.6.layernorm.weight",
+      "backbone.encoder.stages.2.layers.6.layernorm.bias",
+      "backbone.encoder.stages.2.layers.6.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.6.grn.bias",
+      "backbone.encoder.stages.2.layers.6.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.7.dwconv.bias",
+      "backbone.encoder.stages.2.layers.7.layernorm.weight",
+      "backbone.encoder.stages.2.layers.7.layernorm.bias",
+      "backbone.encoder.stages.2.layers.7.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.7.grn.bias",
+      "backbone.encoder.stages.2.layers.7.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.8.dwconv.bias",
+      "backbone.encoder.stages.2.layers.8.layernorm.weight",
+      "backbone.encoder.stages.2.layers.8.layernorm.bias",
+      "backbone.encoder.stages.2.layers.8.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.8.grn.bias",
+      "backbone.encoder.stages.2.layers.8.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.9.dwconv.bias",
+      "backbone.encoder.stages.2.layers.9.layernorm.weight",
+      "backbone.encoder.stages.2.layers.9.layernorm.bias",
+      "backbone.encoder.stages.2.layers.9.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.9.grn.bias",
+      "backbone.encoder.stages.2.layers.9.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.10.dwconv.bias",
+      "backbone.encoder.stages.2.layers.10.layernorm.weight",
+      "backbone.encoder.stages.2.layers.10.layernorm.bias",
+      "backbone.encoder.stages.2.layers.10.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.10.grn.bias",
+      "backbone.encoder.stages.2.layers.10.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.11.dwconv.bias",
+      "backbone.encoder.stages.2.layers.11.layernorm.weight",
+      "backbone.encoder.stages.2.layers.11.layernorm.bias",
+      "backbone.encoder.stages.2.layers.11.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.11.grn.bias",
+      "backbone.encoder.stages.2.layers.11.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.12.dwconv.bias",
+      "backbone.encoder.stages.2.layers.12.layernorm.weight",
+      "backbone.encoder.stages.2.layers.12.layernorm.bias",
+      "backbone.encoder.stages.2.layers.12.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.12.grn.bias",
+      "backbone.encoder.stages.2.layers.12.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.13.dwconv.bias",
+      "backbone.encoder.stages.2.layers.13.layernorm.weight",
+      "backbone.encoder.stages.2.layers.13.layernorm.bias",
+      "backbone.encoder.stages.2.layers.13.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.13.grn.bias",
+      "backbone.encoder.stages.2.layers.13.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.14.dwconv.bias",
+      "backbone.encoder.stages.2.layers.14.layernorm.weight",
+      "backbone.encoder.stages.2.layers.14.layernorm.bias",
+      "backbone.encoder.stages.2.layers.14.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.14.grn.bias",
+      "backbone.encoder.stages.2.layers.14.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.15.dwconv.bias",
+      "backbone.encoder.stages.2.layers.15.layernorm.weight",
+      "backbone.encoder.stages.2.layers.15.layernorm.bias",
+      "backbone.encoder.stages.2.layers.15.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.15.grn.bias",
+      "backbone.encoder.stages.2.layers.15.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.16.dwconv.bias",
+      "backbone.encoder.stages.2.layers.16.layernorm.weight",
+      "backbone.encoder.stages.2.layers.16.layernorm.bias",
+      "backbone.encoder.stages.2.layers.16.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.16.grn.bias",
+      "backbone.encoder.stages.2.layers.16.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.17.dwconv.bias",
+      "backbone.encoder.stages.2.layers.17.layernorm.weight",
+      "backbone.encoder.stages.2.layers.17.layernorm.bias",
+      "backbone.encoder.stages.2.layers.17.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.17.grn.bias",
+      "backbone.encoder.stages.2.layers.17.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.18.dwconv.bias",
+      "backbone.encoder.stages.2.layers.18.layernorm.weight",
+      "backbone.encoder.stages.2.layers.18.layernorm.bias",
+      "backbone.encoder.stages.2.layers.18.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.18.grn.bias",
+      "backbone.encoder.stages.2.layers.18.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.19.dwconv.bias",
+      "backbone.encoder.stages.2.layers.19.layernorm.weight",
+      "backbone.encoder.stages.2.layers.19.layernorm.bias",
+      "backbone.encoder.stages.2.layers.19.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.19.grn.bias",
+      "backbone.encoder.stages.2.layers.19.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.20.dwconv.bias",
+      "backbone.encoder.stages.2.layers.20.layernorm.weight",
+      "backbone.encoder.stages.2.layers.20.layernorm.bias",
+      "backbone.encoder.stages.2.layers.20.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.20.grn.bias",
+      "backbone.encoder.stages.2.layers.20.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.21.dwconv.bias",
+      "backbone.encoder.stages.2.layers.21.layernorm.weight",
+      "backbone.encoder.stages.2.layers.21.layernorm.bias",
+      "backbone.encoder.stages.2.layers.21.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.21.grn.bias",
+      "backbone.encoder.stages.2.layers.21.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.22.dwconv.bias",
+      "backbone.encoder.stages.2.layers.22.layernorm.weight",
+      "backbone.encoder.stages.2.layers.22.layernorm.bias",
+      "backbone.encoder.stages.2.layers.22.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.22.grn.bias",
+      "backbone.encoder.stages.2.layers.22.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.23.dwconv.bias",
+      "backbone.encoder.stages.2.layers.23.layernorm.weight",
+      "backbone.encoder.stages.2.layers.23.layernorm.bias",
+      "backbone.encoder.stages.2.layers.23.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.23.grn.bias",
+      "backbone.encoder.stages.2.layers.23.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.24.dwconv.bias",
+      "backbone.encoder.stages.2.layers.24.layernorm.weight",
+      "backbone.encoder.stages.2.layers.24.layernorm.bias",
+      "backbone.encoder.stages.2.layers.24.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.24.grn.bias",
+      "backbone.encoder.stages.2.layers.24.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.25.dwconv.bias",
+      "backbone.encoder.stages.2.layers.25.layernorm.weight",
+      "backbone.encoder.stages.2.layers.25.layernorm.bias",
+      "backbone.encoder.stages.2.layers.25.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.25.grn.bias",
+      "backbone.encoder.stages.2.layers.25.pwconv2.bias",
+      "backbone.encoder.stages.2.layers.26.dwconv.bias",
+      "backbone.encoder.stages.2.layers.26.layernorm.weight",
+      "backbone.encoder.stages.2.layers.26.layernorm.bias",
+      "backbone.encoder.stages.2.layers.26.pwconv1.bias",
+      "backbone.encoder.stages.2.layers.26.grn.bias",
+      "backbone.encoder.stages.2.layers.26.pwconv2.bias",
+      "backbone.encoder.stages.3.downsampling_layer.0.bias",
+      "backbone.encoder.stages.3.downsampling_layer.1.bias",
+      "backbone.encoder.stages.3.layers.0.dwconv.bias",
+      "backbone.encoder.stages.3.layers.0.layernorm.weight",
+      "backbone.encoder.stages.3.layers.0.layernorm.bias",
+      "backbone.encoder.stages.3.layers.0.pwconv1.bias",
+      "backbone.encoder.stages.3.layers.0.grn.bias",
+      "backbone.encoder.stages.3.layers.0.pwconv2.bias",
+      "backbone.encoder.stages.3.layers.1.dwconv.bias",
+      "backbone.encoder.stages.3.layers.1.layernorm.weight",
+      "backbone.encoder.stages.3.layers.1.layernorm.bias",
+      "backbone.encoder.stages.3.layers.1.pwconv1.bias",
+      "backbone.encoder.stages.3.layers.1.grn.bias",
+      "backbone.encoder.stages.3.layers.1.pwconv2.bias",
+      "backbone.encoder.stages.3.layers.2.dwconv.bias",
+      "backbone.encoder.stages.3.layers.2.layernorm.weight",
+      "backbone.encoder.stages.3.layers.2.layernorm.bias",
+      "backbone.encoder.stages.3.layers.2.pwconv1.bias",
+      "backbone.encoder.stages.3.layers.2.grn.bias",
+      "backbone.encoder.stages.3.layers.2.pwconv2.bias",
+      "backbone.layernorm.weight",
+      "backbone.layernorm.bias",
+      "head.fc1.bias",
+      "head.fc2.bias",
+      "head.fc3.bias"
+    ],
+    "lr_scale": 1.0
+  }
+}
+optimizer settings: {'lr': 0.0004, 'weight_decay': 0.0, 'eps': 1e-08, 'betas': [0.9, 0.99]}
+Set warmup steps = 0
+Set warmup steps = 0
+Max WD = 0.0500000, Min WD = 0.0500000
+Start training for 500 epochs
+Epoch: [0]  [ 0/39]  eta: 0:38:04  lr: 0.000400  min_lr: 0.000400  loss: 164.4885 (164.4885)  weight_decay: 0.0500 (0.0500)  grad_norm: nan (nan)  time: 58.5760  data: 49.0926  max mem: 30437

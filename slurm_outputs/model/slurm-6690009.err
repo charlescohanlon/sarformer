@@ -1,0 +1,78 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.1   6) default-s11
+
+ 
+
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+wandb: Currently logged in as: charlescohanlon (sarformer). Use `wandb login --relogin` to force relogin
+wandb: wandb version 0.19.6 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.17.5
+wandb: Run data is saved locally in /u/cohanlon/sarformer/wandb/run-20250206_212537-3fe9pch1
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2
+wandb: ⭐️ View project at https://wandb.ai/sarformer/model
+wandb: 🚀 View run at https://wandb.ai/sarformer/model/runs/3fe9pch1
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+Loss is nan, stopping training
+Saved last batch to /scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/B_ConvNeXt_GatedMLP_regrpoint_depth_2/debug_mod_dict.pt
+W0206 21:28:43.766237 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470481 closing signal SIGTERM
+W0206 21:28:43.767265 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470482 closing signal SIGTERM
+W0206 21:28:43.767869 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470484 closing signal SIGTERM
+W0206 21:28:43.768409 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470485 closing signal SIGTERM
+W0206 21:28:43.769572 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470486 closing signal SIGTERM
+W0206 21:28:43.770765 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470487 closing signal SIGTERM
+W0206 21:28:43.771561 140001641580352 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2470488 closing signal SIGTERM
+E0206 21:28:50.695672 140001641580352 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 2 (pid: 2470483) of binary: /u/cohanlon/micromamba/envs/sarformer/bin/python3.9
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+run_training_sarformer.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-02-06_21:28:43
+  host      : gpuc05.delta.ncsa.illinois.edu
+  rank      : 2 (local_rank: 2)
+  exitcode  : 1 (pid: 2470483)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

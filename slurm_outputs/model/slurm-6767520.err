@@ -1,0 +1,110 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.1   6) default-s11
+
+ 
+
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+wandb: Currently logged in as: charlescohanlon (sarformer). Use `wandb login --relogin` to force relogin
+wandb: wandb version 0.19.6 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.17.5
+wandb: Run data is saved locally in /u/cohanlon/sarformer/wandb/run-20250207_195816-wewjj71y
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run misc/Baseline_uniform_regrpoint
+wandb: ⭐️ View project at https://wandb.ai/sarformer/model
+wandb: 🚀 View run at https://wandb.ai/sarformer/model/runs/wewjj71y
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1576, in <module>
+[rank1]:     main(args)
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 806, in main
+[rank1]:     train_stats = train_one_epoch(
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 976, in train_one_epoch
+[rank1]:     grad_norm = loss_scaler(
+[rank1]:   File "/u/cohanlon/sarformer/src/utils/native_scaler.py", line 41, in __call__
+[rank1]:     self._scaler.scale(loss).backward(create_graph=create_graph)
+[rank1]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/_tensor.py", line 521, in backward
+[rank1]:     torch.autograd.backward(
+[rank1]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank1]:     _engine_run_backward(
+[rank1]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank1]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank1]: RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
+[rank6]: Traceback (most recent call last):
+[rank6]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1576, in <module>
+[rank6]:     main(args)
+[rank6]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 806, in main
+[rank6]:     train_stats = train_one_epoch(
+[rank6]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 976, in train_one_epoch
+[rank6]:     grad_norm = loss_scaler(
+[rank6]:   File "/u/cohanlon/sarformer/src/utils/native_scaler.py", line 41, in __call__
+[rank6]:     self._scaler.scale(loss).backward(create_graph=create_graph)
+[rank6]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/_tensor.py", line 521, in backward
+[rank6]:     torch.autograd.backward(
+[rank6]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank6]:     _engine_run_backward(
+[rank6]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank6]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank6]: RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
+[rank7]: Traceback (most recent call last):
+[rank7]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1576, in <module>
+[rank7]:     main(args)
+[rank7]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 806, in main
+[rank7]:     train_stats = train_one_epoch(
+[rank7]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 976, in train_one_epoch
+[rank7]:     grad_norm = loss_scaler(
+[rank7]:   File "/u/cohanlon/sarformer/src/utils/native_scaler.py", line 41, in __call__
+[rank7]:     self._scaler.scale(loss).backward(create_graph=create_graph)
+[rank7]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/_tensor.py", line 521, in backward
+[rank7]:     torch.autograd.backward(
+[rank7]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/__init__.py", line 289, in backward
+[rank7]:     _engine_run_backward(
+[rank7]:   File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/autograd/graph.py", line 768, in _engine_run_backward
+[rank7]:     return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[rank7]: RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
+W0207 19:58:40.859581 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273105 closing signal SIGTERM
+W0207 19:58:40.863871 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273107 closing signal SIGTERM
+W0207 19:58:40.880063 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273108 closing signal SIGTERM
+W0207 19:58:40.881415 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273109 closing signal SIGTERM
+W0207 19:58:40.882143 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273110 closing signal SIGTERM
+W0207 19:58:40.883459 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273111 closing signal SIGTERM
+W0207 19:58:40.885309 140314891593536 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 273118 closing signal SIGTERM
+E0207 19:58:48.436554 140314891593536 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 1 (pid: 273106) of binary: /u/cohanlon/micromamba/envs/sarformer/bin/python3.9
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+run_training_sarformer.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-02-07_19:58:40
+  host      : gpuc05.delta.ncsa.illinois.edu
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 273106)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

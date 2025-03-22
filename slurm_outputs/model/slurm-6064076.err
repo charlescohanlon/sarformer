@@ -1,0 +1,192 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.1   6) default-s11
+
+ 
+
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+    self._accessor.mkdir(self, mode)
+PermissionError    : self._accessor.mkdir(self, mode)[Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+
+    
+During handling of the above exception, another exception occurred:
+
+PermissionErrorself._accessor.mkdir(self, mode)Traceback (most recent call last):
+: 
+[Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+
+PermissionError
+During handling of the above exception, another exception occurred:
+
+: Traceback (most recent call last):
+[Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+    self._accessor.mkdir(self, mode)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    return S_ISDIR(self.stat().st_mode)    
+self._accessor.mkdir(self, mode)  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+    self._accessor.mkdir(self, mode)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+    self._accessor.mkdir(self, mode)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1323, in mkdir
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    if not exist_ok or not self.is_dir():
+      File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+self._accessor.mkdir(self, mode)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1560, in <module>
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1332, in mkdir
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+    if not exist_ok or not self.is_dir():
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1439, in is_dir
+    return S_ISDIR(self.stat().st_mode)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/pathlib.py", line 1232, in stat
+    return self._accessor.stat(self)
+PermissionError: [Errno 13] Permission denied: '/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_500epoch_rgb-depth-caption'
+W0115 16:27:14.246963 140494464423744 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2618259 closing signal SIGTERM
+W0115 16:27:14.247604 140494464423744 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2618260 closing signal SIGTERM
+W0115 16:27:14.247689 140494464423744 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2618261 closing signal SIGTERM
+W0115 16:27:14.247981 140494464423744 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2618264 closing signal SIGTERM
+E0115 16:27:14.251703 140494464423744 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 6 (pid: 2618265) of binary: /u/cohanlon/micromamba/envs/sarformer/bin/python3.9
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+run_training_sarformer.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2025-01-15_16:27:14
+  host      : gpuc04.delta.ncsa.illinois.edu
+  rank      : 7 (local_rank: 7)
+  exitcode  : 1 (pid: 2618266)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-01-15_16:27:14
+  host      : gpuc04.delta.ncsa.illinois.edu
+  rank      : 6 (local_rank: 6)
+  exitcode  : 1 (pid: 2618265)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

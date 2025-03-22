@@ -1,0 +1,138 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.1   6) default-s11
+
+ 
+
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+[rank5]: Traceback (most recent call last):
+[rank5]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank5]:     main(args)
+[rank5]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank5]:     model = get_model(args, modality_info)
+[rank5]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank5]:     model = create_model(
+[rank5]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank5]:     create_fn = model_entrypoint(model_name)
+[rank5]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank5]:     return _model_entrypoints[model_name]
+[rank5]: KeyError: 'convnext_gatedmlp_b'
+[rank7]: Traceback (most recent call last):
+[rank7]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank7]:     main(args)
+[rank7]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank7]:     model = get_model(args, modality_info)
+[rank7]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank7]:     model = create_model(
+[rank7]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank7]:     create_fn = model_entrypoint(model_name)
+[rank7]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank7]:     return _model_entrypoints[model_name]
+[rank7]: KeyError: 'convnext_gatedmlp_b'
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank1]:     main(args)
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank1]:     model = get_model(args, modality_info)
+[rank1]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank1]:     model = create_model(
+[rank1]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank1]:     create_fn = model_entrypoint(model_name)
+[rank1]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank1]:     return _model_entrypoints[model_name]
+[rank1]: KeyError: 'convnext_gatedmlp_b'
+[rank6]: Traceback (most recent call last):
+[rank6]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank6]:     main(args)
+[rank6]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank6]:     model = get_model(args, modality_info)
+[rank6]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank6]:     model = create_model(
+[rank6]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank6]:     create_fn = model_entrypoint(model_name)
+[rank6]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank6]:     return _model_entrypoints[model_name]
+[rank6]: KeyError: 'convnext_gatedmlp_b'
+[rank4]: Traceback (most recent call last):
+[rank4]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank4]:     main(args)
+[rank4]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank4]:     model = get_model(args, modality_info)
+[rank4]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank4]:     model = create_model(
+[rank4]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank4]:     create_fn = model_entrypoint(model_name)
+[rank4]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank4]:     return _model_entrypoints[model_name]
+[rank4]: KeyError: 'convnext_gatedmlp_b'
+[rank3]: Traceback (most recent call last):
+[rank3]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank3]:     main(args)
+[rank3]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank3]:     model = get_model(args, modality_info)
+[rank3]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank3]:     model = create_model(
+[rank3]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank3]:     create_fn = model_entrypoint(model_name)
+[rank3]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank3]:     return _model_entrypoints[model_name]
+[rank3]: KeyError: 'convnext_gatedmlp_b'
+[rank2]: Traceback (most recent call last):
+[rank2]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1568, in <module>
+[rank2]:     main(args)
+[rank2]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 674, in main
+[rank2]:     model = get_model(args, modality_info)
+[rank2]:   File "/u/cohanlon/sarformer/run_training_sarformer.py", line 598, in get_model
+[rank2]:     model = create_model(
+[rank2]:   File "/u/cohanlon/sarformer/src/utils/timm/model_builder.py", line 71, in create_model
+[rank2]:     create_fn = model_entrypoint(model_name)
+[rank2]:   File "/u/cohanlon/sarformer/src/utils/timm/registry.py", line 125, in model_entrypoint
+[rank2]:     return _model_entrypoints[model_name]
+[rank2]: KeyError: 'convnext_gatedmlp_b'
+wandb: Currently logged in as: charlescohanlon (sarformer). Use `wandb login --relogin` to force relogin
+W0131 14:11:56.948846 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735765 closing signal SIGTERM
+W0131 14:11:56.949473 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735766 closing signal SIGTERM
+W0131 14:11:56.949681 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735767 closing signal SIGTERM
+W0131 14:11:56.949746 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735768 closing signal SIGTERM
+W0131 14:11:56.949807 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735769 closing signal SIGTERM
+W0131 14:11:56.949865 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735770 closing signal SIGTERM
+W0131 14:11:56.949921 140696138770240 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 2735771 closing signal SIGTERM
+E0131 14:11:58.315757 140696138770240 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 7 (pid: 2735772) of binary: /u/cohanlon/micromamba/envs/sarformer/bin/python3.9
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+run_training_sarformer.py FAILED
+------------------------------------------------------------
+Failures:
+  <NO_OTHER_FAILURES>
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2025-01-31_14:11:56
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 7 (local_rank: 7)
+  exitcode  : 1 (pid: 2735772)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

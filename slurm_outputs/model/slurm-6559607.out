@@ -1,0 +1,1177 @@
+job is starting on gpuc04.delta.ncsa.illinois.edu
+| distributed init (rank 0): env://, gpu 0
+| distributed init (rank 6): env://, gpu 6
+| distributed init (rank 7): env://, gpu 7
+| distributed init (rank 3): env://, gpu 3
+| distributed init (rank 4): env://, gpu 4
+| distributed init (rank 5): env://, gpu 5
+| distributed init (rank 1): env://, gpu 1
+| distributed init (rank 2): env://, gpu 2
+dataset_train size = 40780
+dataset_val size = 416
+Namespace(run_name='model/finetune/S_MAE_instability-nodist_rgb-depth-caption', batch_size=32, full_img_size=673, eff_img_size=447, target_size=224, mask_proportion=0.6, patch_size=None, epochs=100, accum_iter=1, save_ckpt_freq=100, model='sarformer_s', dtype='bf16', cond_domains=['rgb', 'depth', 'caption'], loss_type='mse', distance_type='none', objective='lpl', hflip=0.0, vflip=0.0, finetune='/scratch/bdej/cohanlon/checkpoints/sarformer/model/pretrain/S_MAE_rgb-depth-caption/checkpoint-final.pth', opt='adamw', opt_eps=1e-08, opt_betas=[0.9, 0.99], compute_grad_norm=True, clip_grad=None, skip_grad=None, momentum=0.9, weight_decay=0.05, weight_decay_end=None, blr=0.0001, min_blr=0.0, lr_and_wd_scheduler='cosine', warmup_epochs=10, cooldown_epochs=10, eval_data_path='/scratch/bdej/cohanlon/data/eval', num_eval_metrics_samples=416, num_logged_images=9, eval_batch_size=None, eval_freq=10, eval_metric_freq=10, eval_image_log_freq=20, dist_eval=True, eval_only=False, output_dir='/scratch/bdej/cohanlon/checkpoints/sarformer/model/finetune/S_MAE_instability-nodist_rgb-depth-caption', device='cuda', seed=0, start_epoch=0, num_workers=110, pin_mem=True, show_user_warnings=False, log_wandb=True, wandb_project='model', wandb_entity='sarformer', wandb_run_name='finetune/S_MAE_instability-nodist_rgb-depth-caption', dist_url='env://', print_all=False, warmup_lr=1e-06, min_lr=0.0, crop_std='1e3', eval_metrics_freq=10, data_path='/scratch/bdej/cohanlon/data/train', config_path='cfgs/sarformer/model/finetune/S_MAE_instability-nodist_rgb-depth-caption.yaml', rank=0, world_size=8, gpu=0, distributed=True, dist_backend='nccl', all_domains=['rgb', 'depth', 'caption', 'target_distribution'], is_pretraining=False)
+Creating model: sarformer_s conditioned on ['rgb', 'depth', 'caption']
+_IncompatibleKeys(missing_keys=['backbone.out_proj.weight', 'backbone.out_proj.bias'], unexpected_keys=[])
+Model = SARFormer(
+  (seq_encoder): T5EncoderModel(
+    (shared): Embedding(32128, 512)
+    (encoder): T5Stack(
+      (embed_tokens): Embedding(32128, 512)
+      (block): ModuleList(
+        (0): T5Block(
+          (layer): ModuleList(
+            (0): T5LayerSelfAttention(
+              (SelfAttention): T5Attention(
+                (q): Linear(in_features=512, out_features=384, bias=False)
+                (k): Linear(in_features=512, out_features=384, bias=False)
+                (v): Linear(in_features=512, out_features=384, bias=False)
+                (o): Linear(in_features=384, out_features=512, bias=False)
+                (relative_attention_bias): Embedding(32, 6)
+              )
+              (layer_norm): T5LayerNorm()
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+            (1): T5LayerFF(
+              (DenseReluDense): T5DenseGatedActDense(
+                (wi_0): Linear(in_features=512, out_features=1024, bias=False)
+                (wi_1): Linear(in_features=512, out_features=1024, bias=False)
+                (wo): Linear(in_features=1024, out_features=512, bias=False)
+                (dropout): Dropout(p=0.1, inplace=False)
+                (act): NewGELUActivation()
+              )
+              (layer_norm): T5LayerNorm()
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+          )
+        )
+        (1-7): 7 x T5Block(
+          (layer): ModuleList(
+            (0): T5LayerSelfAttention(
+              (SelfAttention): T5Attention(
+                (q): Linear(in_features=512, out_features=384, bias=False)
+                (k): Linear(in_features=512, out_features=384, bias=False)
+                (v): Linear(in_features=512, out_features=384, bias=False)
+                (o): Linear(in_features=384, out_features=512, bias=False)
+              )
+              (layer_norm): T5LayerNorm()
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+            (1): T5LayerFF(
+              (DenseReluDense): T5DenseGatedActDense(
+                (wi_0): Linear(in_features=512, out_features=1024, bias=False)
+                (wi_1): Linear(in_features=512, out_features=1024, bias=False)
+                (wo): Linear(in_features=1024, out_features=512, bias=False)
+                (dropout): Dropout(p=0.1, inplace=False)
+                (act): NewGELUActivation()
+              )
+              (layer_norm): T5LayerNorm()
+              (dropout): Dropout(p=0.1, inplace=False)
+            )
+          )
+        )
+      )
+      (final_layer_norm): T5LayerNorm()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (backbone): PatchedConvNeXtUNet(
+    (in_proj): Linear(in_features=64, out_features=64, bias=True)
+    (down_blocks): ModuleList(
+      (0): ConditionedSequential(
+        (0): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64)
+          (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=64, out_features=256, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=256, out_features=64, bias=True)
+          (drop_path): Identity()
+        )
+        (1): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64)
+          (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=64, out_features=256, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=256, out_features=64, bias=True)
+          (drop_path): Identity()
+        )
+        (2): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64)
+          (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=64, out_features=256, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=256, out_features=64, bias=True)
+          (drop_path): Identity()
+        )
+        (3): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64)
+          (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=64, out_features=256, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=256, out_features=64, bias=True)
+          (drop_path): Identity()
+        )
+        (4): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=64, out_features=128, bias=True)
+          (dwconv): Conv2d(64, 64, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=64)
+          (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=64, out_features=256, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=256, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (5): NormCrossAttentionBlock(
+          (q): Linear(in_features=128, out_features=128, bias=True)
+          (kv): Linear(in_features=512, out_features=256, bias=True)
+          (attn_drop): Dropout(p=0.0, inplace=False)
+          (proj): Linear(in_features=128, out_features=128, bias=True)
+          (proj_drop): Dropout(p=0.0, inplace=False)
+          (q_norm): LayerNorm((16,), eps=1e-05, elementwise_affine=True)
+          (k_norm): LayerNorm((16,), eps=1e-05, elementwise_affine=True)
+        )
+      )
+      (1): ConditionedSequential(
+        (0): Downsample(
+          scale_factor=0.5
+          (pool): AvgPool2d(kernel_size=2, stride=2, padding=0)
+        )
+        (1): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (2): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (3): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (4): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (5): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=128, out_features=256, bias=True)
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (6): NormCrossAttentionBlock(
+          (q): Linear(in_features=256, out_features=256, bias=True)
+          (kv): Linear(in_features=512, out_features=512, bias=True)
+          (attn_drop): Dropout(p=0.0, inplace=False)
+          (proj): Linear(in_features=256, out_features=256, bias=True)
+          (proj_drop): Dropout(p=0.0, inplace=False)
+          (q_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+          (k_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+        )
+      )
+      (2): ConditionedSequential(
+        (0): Downsample(
+          scale_factor=0.5
+          (pool): AvgPool2d(kernel_size=2, stride=2, padding=0)
+        )
+        (1): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (2): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (3): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (4): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (5): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=256, out_features=512, bias=True)
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=512, bias=True)
+          (drop_path): Identity()
+        )
+        (6): NormCrossAttentionBlock(
+          (q): Linear(in_features=512, out_features=512, bias=True)
+          (kv): Linear(in_features=512, out_features=1024, bias=True)
+          (attn_drop): Dropout(p=0.0, inplace=False)
+          (proj): Linear(in_features=512, out_features=512, bias=True)
+          (proj_drop): Dropout(p=0.0, inplace=False)
+          (q_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+          (k_norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        )
+      )
+    )
+    (middle_block): ConditionedSequential(
+      (0): Downsample(
+        scale_factor=0.5
+        (pool): AvgPool2d(kernel_size=2, stride=2, padding=0)
+      )
+      (1): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+        (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+        (drop_path): Identity()
+      )
+      (2): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+        (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+        (drop_path): Identity()
+      )
+      (3): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+        (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+        (drop_path): Identity()
+      )
+      (4): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+        (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+        (drop_path): Identity()
+      )
+      (5): ConvNeXtV2Block(
+        (skip_proj): Linear(in_features=512, out_features=1024, bias=True)
+        (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+        (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=2048, out_features=1024, bias=True)
+        (drop_path): Identity()
+      )
+      (6): NormCrossAttentionBlock(
+        (q): Linear(in_features=1024, out_features=1024, bias=True)
+        (kv): Linear(in_features=512, out_features=2048, bias=True)
+        (attn_drop): Dropout(p=0.0, inplace=False)
+        (proj): Linear(in_features=1024, out_features=1024, bias=True)
+        (proj_drop): Dropout(p=0.0, inplace=False)
+        (q_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+        (k_norm): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+      )
+      (7): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+        (norm): LayerNorm((1024,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+        (drop_path): Identity()
+      )
+      (8): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+        (norm): LayerNorm((1024,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+        (drop_path): Identity()
+      )
+      (9): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+        (norm): LayerNorm((1024,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+        (drop_path): Identity()
+      )
+      (10): ConvNeXtV2Block(
+        (skip_proj): Identity()
+        (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+        (norm): LayerNorm((1024,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=4096, out_features=1024, bias=True)
+        (drop_path): Identity()
+      )
+      (11): ConvNeXtV2Block(
+        (skip_proj): Linear(in_features=1024, out_features=512, bias=True)
+        (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+        (norm): LayerNorm((1024,), eps=1e-06, elementwise_affine=True)
+        (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+        (act): SiLU()
+        (grn): GRN()
+        (pwconv2): Linear(in_features=4096, out_features=512, bias=True)
+        (drop_path): Identity()
+      )
+      (12): Upsample(scale_factor=2.0, mode=nearest)
+    )
+    (up_blocks): ModuleList(
+      (0): ConditionedSequential(
+        (0): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=1024, out_features=512, bias=True)
+          (dwconv): Conv2d(1024, 1024, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=1024)
+          (norm): LayerNorm((1024,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=1024, out_features=4096, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=4096, out_features=512, bias=True)
+          (drop_path): Identity()
+        )
+        (1): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+          (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+          (drop_path): Identity()
+        )
+        (2): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+          (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+          (drop_path): Identity()
+        )
+        (3): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+          (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=2048, out_features=512, bias=True)
+          (drop_path): Identity()
+        )
+        (4): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=512, out_features=256, bias=True)
+          (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+          (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=2048, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (5): NormCrossAttentionBlock(
+          (q): Linear(in_features=256, out_features=256, bias=True)
+          (kv): Linear(in_features=512, out_features=512, bias=True)
+          (attn_drop): Dropout(p=0.0, inplace=False)
+          (proj): Linear(in_features=256, out_features=256, bias=True)
+          (proj_drop): Dropout(p=0.0, inplace=False)
+          (q_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+          (k_norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+        )
+        (6): Upsample(scale_factor=2.0, mode=nearest)
+      )
+      (1): ConditionedSequential(
+        (0): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=512, out_features=256, bias=True)
+          (dwconv): Conv2d(512, 512, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=512)
+          (norm): LayerNorm((512,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=512, out_features=2048, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=2048, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (1): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (2): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (3): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=256, bias=True)
+          (drop_path): Identity()
+        )
+        (4): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=256, out_features=128, bias=True)
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (5): NormCrossAttentionBlock(
+          (q): Linear(in_features=128, out_features=128, bias=True)
+          (kv): Linear(in_features=512, out_features=256, bias=True)
+          (attn_drop): Dropout(p=0.0, inplace=False)
+          (proj): Linear(in_features=128, out_features=128, bias=True)
+          (proj_drop): Dropout(p=0.0, inplace=False)
+          (q_norm): LayerNorm((16,), eps=1e-05, elementwise_affine=True)
+          (k_norm): LayerNorm((16,), eps=1e-05, elementwise_affine=True)
+        )
+        (6): Upsample(scale_factor=2.0, mode=nearest)
+      )
+      (2): ConditionedSequential(
+        (0): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=256, out_features=128, bias=True)
+          (dwconv): Conv2d(256, 256, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=256)
+          (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=256, out_features=1024, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=1024, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (1): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (2): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (3): ConvNeXtV2Block(
+          (skip_proj): Identity()
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=128, bias=True)
+          (drop_path): Identity()
+        )
+        (4): ConvNeXtV2Block(
+          (skip_proj): Linear(in_features=128, out_features=64, bias=True)
+          (dwconv): Conv2d(128, 128, kernel_size=(7, 7), stride=(1, 1), padding=(3, 3), groups=128)
+          (norm): LayerNorm((128,), eps=1e-06, elementwise_affine=True)
+          (pwconv1): Linear(in_features=128, out_features=512, bias=True)
+          (act): SiLU()
+          (grn): GRN()
+          (pwconv2): Linear(in_features=512, out_features=64, bias=True)
+          (drop_path): Identity()
+        )
+        (5): NormCrossAttentionBlock(
+          (q): Linear(in_features=64, out_features=64, bias=True)
+          (kv): Linear(in_features=512, out_features=128, bias=True)
+          (attn_drop): Dropout(p=0.0, inplace=False)
+          (proj): Linear(in_features=64, out_features=64, bias=True)
+          (proj_drop): Dropout(p=0.0, inplace=False)
+          (q_norm): LayerNorm((8,), eps=1e-05, elementwise_affine=True)
+          (k_norm): LayerNorm((8,), eps=1e-05, elementwise_affine=True)
+        )
+      )
+    )
+    (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+    (out_proj): Linear(in_features=64, out_features=16, bias=True)
+  )
+)
+Number of params: 117.5532 M
+LR = 0.00010000
+Min LR = 0.00000000
+Total (effective) batch size = 256
+Accumulate grad iterations = 1
+Number of training steps = 159
+Number of training examples per epoch = 40704
+Param groups = {
+  "decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "seq_encoder.shared.weight",
+      "seq_encoder.encoder.block.0.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.0.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.0.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.0.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.0.layer.0.SelfAttention.relative_attention_bias.weight",
+      "seq_encoder.encoder.block.0.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.0.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.0.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.1.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.1.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.1.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.1.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.1.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.1.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.1.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.2.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.2.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.2.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.2.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.2.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.2.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.2.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.3.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.3.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.3.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.3.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.3.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.3.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.3.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.4.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.4.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.4.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.4.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.4.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.4.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.4.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.5.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.5.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.5.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.5.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.5.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.5.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.5.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.6.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.6.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.6.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.6.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.6.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.6.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.6.layer.1.DenseReluDense.wo.weight",
+      "seq_encoder.encoder.block.7.layer.0.SelfAttention.q.weight",
+      "seq_encoder.encoder.block.7.layer.0.SelfAttention.k.weight",
+      "seq_encoder.encoder.block.7.layer.0.SelfAttention.v.weight",
+      "seq_encoder.encoder.block.7.layer.0.SelfAttention.o.weight",
+      "seq_encoder.encoder.block.7.layer.1.DenseReluDense.wi_0.weight",
+      "seq_encoder.encoder.block.7.layer.1.DenseReluDense.wi_1.weight",
+      "seq_encoder.encoder.block.7.layer.1.DenseReluDense.wo.weight",
+      "backbone.in_proj.weight",
+      "backbone.down_blocks.0.0.dwconv.weight",
+      "backbone.down_blocks.0.0.pwconv1.weight",
+      "backbone.down_blocks.0.0.pwconv2.weight",
+      "backbone.down_blocks.0.1.dwconv.weight",
+      "backbone.down_blocks.0.1.pwconv1.weight",
+      "backbone.down_blocks.0.1.pwconv2.weight",
+      "backbone.down_blocks.0.2.dwconv.weight",
+      "backbone.down_blocks.0.2.pwconv1.weight",
+      "backbone.down_blocks.0.2.pwconv2.weight",
+      "backbone.down_blocks.0.3.dwconv.weight",
+      "backbone.down_blocks.0.3.pwconv1.weight",
+      "backbone.down_blocks.0.3.pwconv2.weight",
+      "backbone.down_blocks.0.4.skip_proj.weight",
+      "backbone.down_blocks.0.4.dwconv.weight",
+      "backbone.down_blocks.0.4.pwconv1.weight",
+      "backbone.down_blocks.0.4.pwconv2.weight",
+      "backbone.down_blocks.0.5.q.weight",
+      "backbone.down_blocks.0.5.kv.weight",
+      "backbone.down_blocks.0.5.proj.weight",
+      "backbone.down_blocks.1.1.dwconv.weight",
+      "backbone.down_blocks.1.1.pwconv1.weight",
+      "backbone.down_blocks.1.1.pwconv2.weight",
+      "backbone.down_blocks.1.2.dwconv.weight",
+      "backbone.down_blocks.1.2.pwconv1.weight",
+      "backbone.down_blocks.1.2.pwconv2.weight",
+      "backbone.down_blocks.1.3.dwconv.weight",
+      "backbone.down_blocks.1.3.pwconv1.weight",
+      "backbone.down_blocks.1.3.pwconv2.weight",
+      "backbone.down_blocks.1.4.dwconv.weight",
+      "backbone.down_blocks.1.4.pwconv1.weight",
+      "backbone.down_blocks.1.4.pwconv2.weight",
+      "backbone.down_blocks.1.5.skip_proj.weight",
+      "backbone.down_blocks.1.5.dwconv.weight",
+      "backbone.down_blocks.1.5.pwconv1.weight",
+      "backbone.down_blocks.1.5.pwconv2.weight",
+      "backbone.down_blocks.1.6.q.weight",
+      "backbone.down_blocks.1.6.kv.weight",
+      "backbone.down_blocks.1.6.proj.weight",
+      "backbone.down_blocks.2.1.dwconv.weight",
+      "backbone.down_blocks.2.1.pwconv1.weight",
+      "backbone.down_blocks.2.1.pwconv2.weight",
+      "backbone.down_blocks.2.2.dwconv.weight",
+      "backbone.down_blocks.2.2.pwconv1.weight",
+      "backbone.down_blocks.2.2.pwconv2.weight",
+      "backbone.down_blocks.2.3.dwconv.weight",
+      "backbone.down_blocks.2.3.pwconv1.weight",
+      "backbone.down_blocks.2.3.pwconv2.weight",
+      "backbone.down_blocks.2.4.dwconv.weight",
+      "backbone.down_blocks.2.4.pwconv1.weight",
+      "backbone.down_blocks.2.4.pwconv2.weight",
+      "backbone.down_blocks.2.5.skip_proj.weight",
+      "backbone.down_blocks.2.5.dwconv.weight",
+      "backbone.down_blocks.2.5.pwconv1.weight",
+      "backbone.down_blocks.2.5.pwconv2.weight",
+      "backbone.down_blocks.2.6.q.weight",
+      "backbone.down_blocks.2.6.kv.weight",
+      "backbone.down_blocks.2.6.proj.weight",
+      "backbone.middle_block.1.dwconv.weight",
+      "backbone.middle_block.1.pwconv1.weight",
+      "backbone.middle_block.1.pwconv2.weight",
+      "backbone.middle_block.2.dwconv.weight",
+      "backbone.middle_block.2.pwconv1.weight",
+      "backbone.middle_block.2.pwconv2.weight",
+      "backbone.middle_block.3.dwconv.weight",
+      "backbone.middle_block.3.pwconv1.weight",
+      "backbone.middle_block.3.pwconv2.weight",
+      "backbone.middle_block.4.dwconv.weight",
+      "backbone.middle_block.4.pwconv1.weight",
+      "backbone.middle_block.4.pwconv2.weight",
+      "backbone.middle_block.5.skip_proj.weight",
+      "backbone.middle_block.5.dwconv.weight",
+      "backbone.middle_block.5.pwconv1.weight",
+      "backbone.middle_block.5.pwconv2.weight",
+      "backbone.middle_block.6.q.weight",
+      "backbone.middle_block.6.kv.weight",
+      "backbone.middle_block.6.proj.weight",
+      "backbone.middle_block.7.dwconv.weight",
+      "backbone.middle_block.7.pwconv1.weight",
+      "backbone.middle_block.7.pwconv2.weight",
+      "backbone.middle_block.8.dwconv.weight",
+      "backbone.middle_block.8.pwconv1.weight",
+      "backbone.middle_block.8.pwconv2.weight",
+      "backbone.middle_block.9.dwconv.weight",
+      "backbone.middle_block.9.pwconv1.weight",
+      "backbone.middle_block.9.pwconv2.weight",
+      "backbone.middle_block.10.dwconv.weight",
+      "backbone.middle_block.10.pwconv1.weight",
+      "backbone.middle_block.10.pwconv2.weight",
+      "backbone.middle_block.11.skip_proj.weight",
+      "backbone.middle_block.11.dwconv.weight",
+      "backbone.middle_block.11.pwconv1.weight",
+      "backbone.middle_block.11.pwconv2.weight",
+      "backbone.up_blocks.0.0.skip_proj.weight",
+      "backbone.up_blocks.0.0.dwconv.weight",
+      "backbone.up_blocks.0.0.pwconv1.weight",
+      "backbone.up_blocks.0.0.pwconv2.weight",
+      "backbone.up_blocks.0.1.dwconv.weight",
+      "backbone.up_blocks.0.1.pwconv1.weight",
+      "backbone.up_blocks.0.1.pwconv2.weight",
+      "backbone.up_blocks.0.2.dwconv.weight",
+      "backbone.up_blocks.0.2.pwconv1.weight",
+      "backbone.up_blocks.0.2.pwconv2.weight",
+      "backbone.up_blocks.0.3.dwconv.weight",
+      "backbone.up_blocks.0.3.pwconv1.weight",
+      "backbone.up_blocks.0.3.pwconv2.weight",
+      "backbone.up_blocks.0.4.skip_proj.weight",
+      "backbone.up_blocks.0.4.dwconv.weight",
+      "backbone.up_blocks.0.4.pwconv1.weight",
+      "backbone.up_blocks.0.4.pwconv2.weight",
+      "backbone.up_blocks.0.5.q.weight",
+      "backbone.up_blocks.0.5.kv.weight",
+      "backbone.up_blocks.0.5.proj.weight",
+      "backbone.up_blocks.1.0.skip_proj.weight",
+      "backbone.up_blocks.1.0.dwconv.weight",
+      "backbone.up_blocks.1.0.pwconv1.weight",
+      "backbone.up_blocks.1.0.pwconv2.weight",
+      "backbone.up_blocks.1.1.dwconv.weight",
+      "backbone.up_blocks.1.1.pwconv1.weight",
+      "backbone.up_blocks.1.1.pwconv2.weight",
+      "backbone.up_blocks.1.2.dwconv.weight",
+      "backbone.up_blocks.1.2.pwconv1.weight",
+      "backbone.up_blocks.1.2.pwconv2.weight",
+      "backbone.up_blocks.1.3.dwconv.weight",
+      "backbone.up_blocks.1.3.pwconv1.weight",
+      "backbone.up_blocks.1.3.pwconv2.weight",
+      "backbone.up_blocks.1.4.skip_proj.weight",
+      "backbone.up_blocks.1.4.dwconv.weight",
+      "backbone.up_blocks.1.4.pwconv1.weight",
+      "backbone.up_blocks.1.4.pwconv2.weight",
+      "backbone.up_blocks.1.5.q.weight",
+      "backbone.up_blocks.1.5.kv.weight",
+      "backbone.up_blocks.1.5.proj.weight",
+      "backbone.up_blocks.2.0.skip_proj.weight",
+      "backbone.up_blocks.2.0.dwconv.weight",
+      "backbone.up_blocks.2.0.pwconv1.weight",
+      "backbone.up_blocks.2.0.pwconv2.weight",
+      "backbone.up_blocks.2.1.dwconv.weight",
+      "backbone.up_blocks.2.1.pwconv1.weight",
+      "backbone.up_blocks.2.1.pwconv2.weight",
+      "backbone.up_blocks.2.2.dwconv.weight",
+      "backbone.up_blocks.2.2.pwconv1.weight",
+      "backbone.up_blocks.2.2.pwconv2.weight",
+      "backbone.up_blocks.2.3.dwconv.weight",
+      "backbone.up_blocks.2.3.pwconv1.weight",
+      "backbone.up_blocks.2.3.pwconv2.weight",
+      "backbone.up_blocks.2.4.skip_proj.weight",
+      "backbone.up_blocks.2.4.dwconv.weight",
+      "backbone.up_blocks.2.4.pwconv1.weight",
+      "backbone.up_blocks.2.4.pwconv2.weight",
+      "backbone.up_blocks.2.5.q.weight",
+      "backbone.up_blocks.2.5.kv.weight",
+      "backbone.up_blocks.2.5.proj.weight",
+      "backbone.out_proj.weight"
+    ],
+    "lr_scale": 1.0
+  },
+  "no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "seq_encoder.encoder.block.0.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.0.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.1.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.1.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.2.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.2.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.3.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.3.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.4.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.4.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.5.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.5.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.6.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.6.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.block.7.layer.0.layer_norm.weight",
+      "seq_encoder.encoder.block.7.layer.1.layer_norm.weight",
+      "seq_encoder.encoder.final_layer_norm.weight",
+      "backbone.in_proj.bias",
+      "backbone.down_blocks.0.0.dwconv.bias",
+      "backbone.down_blocks.0.0.norm.weight",
+      "backbone.down_blocks.0.0.norm.bias",
+      "backbone.down_blocks.0.0.pwconv1.bias",
+      "backbone.down_blocks.0.0.grn.gamma",
+      "backbone.down_blocks.0.0.grn.beta",
+      "backbone.down_blocks.0.0.pwconv2.bias",
+      "backbone.down_blocks.0.1.dwconv.bias",
+      "backbone.down_blocks.0.1.norm.weight",
+      "backbone.down_blocks.0.1.norm.bias",
+      "backbone.down_blocks.0.1.pwconv1.bias",
+      "backbone.down_blocks.0.1.grn.gamma",
+      "backbone.down_blocks.0.1.grn.beta",
+      "backbone.down_blocks.0.1.pwconv2.bias",
+      "backbone.down_blocks.0.2.dwconv.bias",
+      "backbone.down_blocks.0.2.norm.weight",
+      "backbone.down_blocks.0.2.norm.bias",
+      "backbone.down_blocks.0.2.pwconv1.bias",
+      "backbone.down_blocks.0.2.grn.gamma",
+      "backbone.down_blocks.0.2.grn.beta",
+      "backbone.down_blocks.0.2.pwconv2.bias",
+      "backbone.down_blocks.0.3.dwconv.bias",
+      "backbone.down_blocks.0.3.norm.weight",
+      "backbone.down_blocks.0.3.norm.bias",
+      "backbone.down_blocks.0.3.pwconv1.bias",
+      "backbone.down_blocks.0.3.grn.gamma",
+      "backbone.down_blocks.0.3.grn.beta",
+      "backbone.down_blocks.0.3.pwconv2.bias",
+      "backbone.down_blocks.0.4.skip_proj.bias",
+      "backbone.down_blocks.0.4.dwconv.bias",
+      "backbone.down_blocks.0.4.norm.weight",
+      "backbone.down_blocks.0.4.norm.bias",
+      "backbone.down_blocks.0.4.pwconv1.bias",
+      "backbone.down_blocks.0.4.grn.gamma",
+      "backbone.down_blocks.0.4.grn.beta",
+      "backbone.down_blocks.0.4.pwconv2.bias",
+      "backbone.down_blocks.0.5.q.bias",
+      "backbone.down_blocks.0.5.kv.bias",
+      "backbone.down_blocks.0.5.proj.bias",
+      "backbone.down_blocks.0.5.q_norm.weight",
+      "backbone.down_blocks.0.5.q_norm.bias",
+      "backbone.down_blocks.0.5.k_norm.weight",
+      "backbone.down_blocks.0.5.k_norm.bias",
+      "backbone.down_blocks.1.1.dwconv.bias",
+      "backbone.down_blocks.1.1.norm.weight",
+      "backbone.down_blocks.1.1.norm.bias",
+      "backbone.down_blocks.1.1.pwconv1.bias",
+      "backbone.down_blocks.1.1.grn.gamma",
+      "backbone.down_blocks.1.1.grn.beta",
+      "backbone.down_blocks.1.1.pwconv2.bias",
+      "backbone.down_blocks.1.2.dwconv.bias",
+      "backbone.down_blocks.1.2.norm.weight",
+      "backbone.down_blocks.1.2.norm.bias",
+      "backbone.down_blocks.1.2.pwconv1.bias",
+      "backbone.down_blocks.1.2.grn.gamma",
+      "backbone.down_blocks.1.2.grn.beta",
+      "backbone.down_blocks.1.2.pwconv2.bias",
+      "backbone.down_blocks.1.3.dwconv.bias",
+      "backbone.down_blocks.1.3.norm.weight",
+      "backbone.down_blocks.1.3.norm.bias",
+      "backbone.down_blocks.1.3.pwconv1.bias",
+      "backbone.down_blocks.1.3.grn.gamma",
+      "backbone.down_blocks.1.3.grn.beta",
+      "backbone.down_blocks.1.3.pwconv2.bias",
+      "backbone.down_blocks.1.4.dwconv.bias",
+      "backbone.down_blocks.1.4.norm.weight",
+      "backbone.down_blocks.1.4.norm.bias",
+      "backbone.down_blocks.1.4.pwconv1.bias",
+      "backbone.down_blocks.1.4.grn.gamma",
+      "backbone.down_blocks.1.4.grn.beta",
+      "backbone.down_blocks.1.4.pwconv2.bias",
+      "backbone.down_blocks.1.5.skip_proj.bias",
+      "backbone.down_blocks.1.5.dwconv.bias",
+      "backbone.down_blocks.1.5.norm.weight",
+      "backbone.down_blocks.1.5.norm.bias",
+      "backbone.down_blocks.1.5.pwconv1.bias",
+      "backbone.down_blocks.1.5.grn.gamma",
+      "backbone.down_blocks.1.5.grn.beta",
+      "backbone.down_blocks.1.5.pwconv2.bias",
+      "backbone.down_blocks.1.6.q.bias",
+      "backbone.down_blocks.1.6.kv.bias",
+      "backbone.down_blocks.1.6.proj.bias",
+      "backbone.down_blocks.1.6.q_norm.weight",
+      "backbone.down_blocks.1.6.q_norm.bias",
+      "backbone.down_blocks.1.6.k_norm.weight",
+      "backbone.down_blocks.1.6.k_norm.bias",
+      "backbone.down_blocks.2.1.dwconv.bias",
+      "backbone.down_blocks.2.1.norm.weight",
+      "backbone.down_blocks.2.1.norm.bias",
+      "backbone.down_blocks.2.1.pwconv1.bias",
+      "backbone.down_blocks.2.1.grn.gamma",
+      "backbone.down_blocks.2.1.grn.beta",
+      "backbone.down_blocks.2.1.pwconv2.bias",
+      "backbone.down_blocks.2.2.dwconv.bias",
+      "backbone.down_blocks.2.2.norm.weight",
+      "backbone.down_blocks.2.2.norm.bias",
+      "backbone.down_blocks.2.2.pwconv1.bias",
+      "backbone.down_blocks.2.2.grn.gamma",
+      "backbone.down_blocks.2.2.grn.beta",
+      "backbone.down_blocks.2.2.pwconv2.bias",
+      "backbone.down_blocks.2.3.dwconv.bias",
+      "backbone.down_blocks.2.3.norm.weight",
+      "backbone.down_blocks.2.3.norm.bias",
+      "backbone.down_blocks.2.3.pwconv1.bias",
+      "backbone.down_blocks.2.3.grn.gamma",
+      "backbone.down_blocks.2.3.grn.beta",
+      "backbone.down_blocks.2.3.pwconv2.bias",
+      "backbone.down_blocks.2.4.dwconv.bias",
+      "backbone.down_blocks.2.4.norm.weight",
+      "backbone.down_blocks.2.4.norm.bias",
+      "backbone.down_blocks.2.4.pwconv1.bias",
+      "backbone.down_blocks.2.4.grn.gamma",
+      "backbone.down_blocks.2.4.grn.beta",
+      "backbone.down_blocks.2.4.pwconv2.bias",
+      "backbone.down_blocks.2.5.skip_proj.bias",
+      "backbone.down_blocks.2.5.dwconv.bias",
+      "backbone.down_blocks.2.5.norm.weight",
+      "backbone.down_blocks.2.5.norm.bias",
+      "backbone.down_blocks.2.5.pwconv1.bias",
+      "backbone.down_blocks.2.5.grn.gamma",
+      "backbone.down_blocks.2.5.grn.beta",
+      "backbone.down_blocks.2.5.pwconv2.bias",
+      "backbone.down_blocks.2.6.q.bias",
+      "backbone.down_blocks.2.6.kv.bias",
+      "backbone.down_blocks.2.6.proj.bias",
+      "backbone.down_blocks.2.6.q_norm.weight",
+      "backbone.down_blocks.2.6.q_norm.bias",
+      "backbone.down_blocks.2.6.k_norm.weight",
+      "backbone.down_blocks.2.6.k_norm.bias",
+      "backbone.middle_block.1.dwconv.bias",
+      "backbone.middle_block.1.norm.weight",
+      "backbone.middle_block.1.norm.bias",
+      "backbone.middle_block.1.pwconv1.bias",
+      "backbone.middle_block.1.grn.gamma",
+      "backbone.middle_block.1.grn.beta",
+      "backbone.middle_block.1.pwconv2.bias",
+      "backbone.middle_block.2.dwconv.bias",
+      "backbone.middle_block.2.norm.weight",
+      "backbone.middle_block.2.norm.bias",
+      "backbone.middle_block.2.pwconv1.bias",
+      "backbone.middle_block.2.grn.gamma",
+      "backbone.middle_block.2.grn.beta",
+      "backbone.middle_block.2.pwconv2.bias",
+      "backbone.middle_block.3.dwconv.bias",
+      "backbone.middle_block.3.norm.weight",
+      "backbone.middle_block.3.norm.bias",
+      "backbone.middle_block.3.pwconv1.bias",
+      "backbone.middle_block.3.grn.gamma",
+      "backbone.middle_block.3.grn.beta",
+      "backbone.middle_block.3.pwconv2.bias",
+      "backbone.middle_block.4.dwconv.bias",
+      "backbone.middle_block.4.norm.weight",
+      "backbone.middle_block.4.norm.bias",
+      "backbone.middle_block.4.pwconv1.bias",
+      "backbone.middle_block.4.grn.gamma",
+      "backbone.middle_block.4.grn.beta",
+      "backbone.middle_block.4.pwconv2.bias",
+      "backbone.middle_block.5.skip_proj.bias",
+      "backbone.middle_block.5.dwconv.bias",
+      "backbone.middle_block.5.norm.weight",
+      "backbone.middle_block.5.norm.bias",
+      "backbone.middle_block.5.pwconv1.bias",
+      "backbone.middle_block.5.grn.gamma",
+      "backbone.middle_block.5.grn.beta",
+      "backbone.middle_block.5.pwconv2.bias",
+      "backbone.middle_block.6.q.bias",
+      "backbone.middle_block.6.kv.bias",
+      "backbone.middle_block.6.proj.bias",
+      "backbone.middle_block.6.q_norm.weight",
+      "backbone.middle_block.6.q_norm.bias",
+      "backbone.middle_block.6.k_norm.weight",
+      "backbone.middle_block.6.k_norm.bias",
+      "backbone.middle_block.7.dwconv.bias",
+      "backbone.middle_block.7.norm.weight",
+      "backbone.middle_block.7.norm.bias",
+      "backbone.middle_block.7.pwconv1.bias",
+      "backbone.middle_block.7.grn.gamma",
+      "backbone.middle_block.7.grn.beta",
+      "backbone.middle_block.7.pwconv2.bias",
+      "backbone.middle_block.8.dwconv.bias",
+      "backbone.middle_block.8.norm.weight",
+      "backbone.middle_block.8.norm.bias",
+      "backbone.middle_block.8.pwconv1.bias",
+      "backbone.middle_block.8.grn.gamma",
+      "backbone.middle_block.8.grn.beta",
+      "backbone.middle_block.8.pwconv2.bias",
+      "backbone.middle_block.9.dwconv.bias",
+      "backbone.middle_block.9.norm.weight",
+      "backbone.middle_block.9.norm.bias",
+      "backbone.middle_block.9.pwconv1.bias",
+      "backbone.middle_block.9.grn.gamma",
+      "backbone.middle_block.9.grn.beta",
+      "backbone.middle_block.9.pwconv2.bias",
+      "backbone.middle_block.10.dwconv.bias",
+      "backbone.middle_block.10.norm.weight",
+      "backbone.middle_block.10.norm.bias",
+      "backbone.middle_block.10.pwconv1.bias",
+      "backbone.middle_block.10.grn.gamma",
+      "backbone.middle_block.10.grn.beta",
+      "backbone.middle_block.10.pwconv2.bias",
+      "backbone.middle_block.11.skip_proj.bias",
+      "backbone.middle_block.11.dwconv.bias",
+      "backbone.middle_block.11.norm.weight",
+      "backbone.middle_block.11.norm.bias",
+      "backbone.middle_block.11.pwconv1.bias",
+      "backbone.middle_block.11.grn.gamma",
+      "backbone.middle_block.11.grn.beta",
+      "backbone.middle_block.11.pwconv2.bias",
+      "backbone.up_blocks.0.0.skip_proj.bias",
+      "backbone.up_blocks.0.0.dwconv.bias",
+      "backbone.up_blocks.0.0.norm.weight",
+      "backbone.up_blocks.0.0.norm.bias",
+      "backbone.up_blocks.0.0.pwconv1.bias",
+      "backbone.up_blocks.0.0.grn.gamma",
+      "backbone.up_blocks.0.0.grn.beta",
+      "backbone.up_blocks.0.0.pwconv2.bias",
+      "backbone.up_blocks.0.1.dwconv.bias",
+      "backbone.up_blocks.0.1.norm.weight",
+      "backbone.up_blocks.0.1.norm.bias",
+      "backbone.up_blocks.0.1.pwconv1.bias",
+      "backbone.up_blocks.0.1.grn.gamma",
+      "backbone.up_blocks.0.1.grn.beta",
+      "backbone.up_blocks.0.1.pwconv2.bias",
+      "backbone.up_blocks.0.2.dwconv.bias",
+      "backbone.up_blocks.0.2.norm.weight",
+      "backbone.up_blocks.0.2.norm.bias",
+      "backbone.up_blocks.0.2.pwconv1.bias",
+      "backbone.up_blocks.0.2.grn.gamma",
+      "backbone.up_blocks.0.2.grn.beta",
+      "backbone.up_blocks.0.2.pwconv2.bias",
+      "backbone.up_blocks.0.3.dwconv.bias",
+      "backbone.up_blocks.0.3.norm.weight",
+      "backbone.up_blocks.0.3.norm.bias",
+      "backbone.up_blocks.0.3.pwconv1.bias",
+      "backbone.up_blocks.0.3.grn.gamma",
+      "backbone.up_blocks.0.3.grn.beta",
+      "backbone.up_blocks.0.3.pwconv2.bias",
+      "backbone.up_blocks.0.4.skip_proj.bias",
+      "backbone.up_blocks.0.4.dwconv.bias",
+      "backbone.up_blocks.0.4.norm.weight",
+      "backbone.up_blocks.0.4.norm.bias",
+      "backbone.up_blocks.0.4.pwconv1.bias",
+      "backbone.up_blocks.0.4.grn.gamma",
+      "backbone.up_blocks.0.4.grn.beta",
+      "backbone.up_blocks.0.4.pwconv2.bias",
+      "backbone.up_blocks.0.5.q.bias",
+      "backbone.up_blocks.0.5.kv.bias",
+      "backbone.up_blocks.0.5.proj.bias",
+      "backbone.up_blocks.0.5.q_norm.weight",
+      "backbone.up_blocks.0.5.q_norm.bias",
+      "backbone.up_blocks.0.5.k_norm.weight",
+      "backbone.up_blocks.0.5.k_norm.bias",
+      "backbone.up_blocks.1.0.skip_proj.bias",
+      "backbone.up_blocks.1.0.dwconv.bias",
+      "backbone.up_blocks.1.0.norm.weight",
+      "backbone.up_blocks.1.0.norm.bias",
+      "backbone.up_blocks.1.0.pwconv1.bias",
+      "backbone.up_blocks.1.0.grn.gamma",
+      "backbone.up_blocks.1.0.grn.beta",
+      "backbone.up_blocks.1.0.pwconv2.bias",
+      "backbone.up_blocks.1.1.dwconv.bias",
+      "backbone.up_blocks.1.1.norm.weight",
+      "backbone.up_blocks.1.1.norm.bias",
+      "backbone.up_blocks.1.1.pwconv1.bias",
+      "backbone.up_blocks.1.1.grn.gamma",
+      "backbone.up_blocks.1.1.grn.beta",
+      "backbone.up_blocks.1.1.pwconv2.bias",
+      "backbone.up_blocks.1.2.dwconv.bias",
+      "backbone.up_blocks.1.2.norm.weight",
+      "backbone.up_blocks.1.2.norm.bias",
+      "backbone.up_blocks.1.2.pwconv1.bias",
+      "backbone.up_blocks.1.2.grn.gamma",
+      "backbone.up_blocks.1.2.grn.beta",
+      "backbone.up_blocks.1.2.pwconv2.bias",
+      "backbone.up_blocks.1.3.dwconv.bias",
+      "backbone.up_blocks.1.3.norm.weight",
+      "backbone.up_blocks.1.3.norm.bias",
+      "backbone.up_blocks.1.3.pwconv1.bias",
+      "backbone.up_blocks.1.3.grn.gamma",
+      "backbone.up_blocks.1.3.grn.beta",
+      "backbone.up_blocks.1.3.pwconv2.bias",
+      "backbone.up_blocks.1.4.skip_proj.bias",
+      "backbone.up_blocks.1.4.dwconv.bias",
+      "backbone.up_blocks.1.4.norm.weight",
+      "backbone.up_blocks.1.4.norm.bias",
+      "backbone.up_blocks.1.4.pwconv1.bias",
+      "backbone.up_blocks.1.4.grn.gamma",
+      "backbone.up_blocks.1.4.grn.beta",
+      "backbone.up_blocks.1.4.pwconv2.bias",
+      "backbone.up_blocks.1.5.q.bias",
+      "backbone.up_blocks.1.5.kv.bias",
+      "backbone.up_blocks.1.5.proj.bias",
+      "backbone.up_blocks.1.5.q_norm.weight",
+      "backbone.up_blocks.1.5.q_norm.bias",
+      "backbone.up_blocks.1.5.k_norm.weight",
+      "backbone.up_blocks.1.5.k_norm.bias",
+      "backbone.up_blocks.2.0.skip_proj.bias",
+      "backbone.up_blocks.2.0.dwconv.bias",
+      "backbone.up_blocks.2.0.norm.weight",
+      "backbone.up_blocks.2.0.norm.bias",
+      "backbone.up_blocks.2.0.pwconv1.bias",
+      "backbone.up_blocks.2.0.grn.gamma",
+      "backbone.up_blocks.2.0.grn.beta",
+      "backbone.up_blocks.2.0.pwconv2.bias",
+      "backbone.up_blocks.2.1.dwconv.bias",
+      "backbone.up_blocks.2.1.norm.weight",
+      "backbone.up_blocks.2.1.norm.bias",
+      "backbone.up_blocks.2.1.pwconv1.bias",
+      "backbone.up_blocks.2.1.grn.gamma",
+      "backbone.up_blocks.2.1.grn.beta",
+      "backbone.up_blocks.2.1.pwconv2.bias",
+      "backbone.up_blocks.2.2.dwconv.bias",
+      "backbone.up_blocks.2.2.norm.weight",
+      "backbone.up_blocks.2.2.norm.bias",
+      "backbone.up_blocks.2.2.pwconv1.bias",
+      "backbone.up_blocks.2.2.grn.gamma",
+      "backbone.up_blocks.2.2.grn.beta",
+      "backbone.up_blocks.2.2.pwconv2.bias",
+      "backbone.up_blocks.2.3.dwconv.bias",
+      "backbone.up_blocks.2.3.norm.weight",
+      "backbone.up_blocks.2.3.norm.bias",
+      "backbone.up_blocks.2.3.pwconv1.bias",
+      "backbone.up_blocks.2.3.grn.gamma",
+      "backbone.up_blocks.2.3.grn.beta",
+      "backbone.up_blocks.2.3.pwconv2.bias",
+      "backbone.up_blocks.2.4.skip_proj.bias",
+      "backbone.up_blocks.2.4.dwconv.bias",
+      "backbone.up_blocks.2.4.norm.weight",
+      "backbone.up_blocks.2.4.norm.bias",
+      "backbone.up_blocks.2.4.pwconv1.bias",
+      "backbone.up_blocks.2.4.grn.gamma",
+      "backbone.up_blocks.2.4.grn.beta",
+      "backbone.up_blocks.2.4.pwconv2.bias",
+      "backbone.up_blocks.2.5.q.bias",
+      "backbone.up_blocks.2.5.kv.bias",
+      "backbone.up_blocks.2.5.proj.bias",
+      "backbone.up_blocks.2.5.q_norm.weight",
+      "backbone.up_blocks.2.5.q_norm.bias",
+      "backbone.up_blocks.2.5.k_norm.weight",
+      "backbone.up_blocks.2.5.k_norm.bias",
+      "backbone.norm.weight",
+      "backbone.norm.bias",
+      "backbone.out_proj.bias"
+    ],
+    "lr_scale": 1.0
+  }
+}
+optimizer settings: {'lr': 0.0001, 'weight_decay': 0.0, 'eps': 1e-08, 'betas': [0.9, 0.99]}
+Set warmup steps = 1590
+Set warmup steps = 0
+Max WD = 0.0500000, Min WD = 0.0500000
+Start training for 100 epochs

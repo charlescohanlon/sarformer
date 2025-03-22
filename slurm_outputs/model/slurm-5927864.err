@@ -1,0 +1,114 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.1   6) default-s11
+
+ 
+
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+AttributeError: module 'PIL.Image' has no attribute 'ImageFile'
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+AttributeError: module 'PIL.Image' has no attribute 'ImageFile'
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+    AttributeErrortarget_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile: 
+module 'PIL.Image' has no attribute 'ImageFile'AttributeError
+: module 'PIL.Image' has no attribute 'ImageFile'
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+AttributeError: module 'PIL.Image' has no attribute 'ImageFile'
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+AttributeError: module 'PIL.Image' has no attribute 'ImageFile'
+You are using the default legacy behaviour of the <class 'transformers.models.t5.tokenization_t5.T5Tokenizer'>. This is expected, and simply means that the `legacy` (previous) behavior will be used so nothing changes for you. If you want to use the new behaviour, set `legacy=False`. This should only be set if you understand what it means, and thoroughly read the reason why this was added as explained in https://github.com/huggingface/transformers/pull/24565
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+AttributeError: module 'PIL.Image' has no attribute 'ImageFile'
+Traceback (most recent call last):
+  File "/u/cohanlon/sarformer/run_training_sarformer.py", line 1504, in <module>
+    target_dist: torch.Tensor, pred_dist: torch.Tensor, im: Image.ImageFile
+AttributeError: module 'PIL.Image' has no attribute 'ImageFile'
+W1219 16:28:29.283378 140120485263168 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1195229 closing signal SIGTERM
+W1219 16:28:29.283821 140120485263168 torch/distributed/elastic/multiprocessing/api.py:858] Sending process 1195303 closing signal SIGTERM
+E1219 16:28:29.397622 140120485263168 torch/distributed/elastic/multiprocessing/api.py:833] failed (exitcode: 1) local_rank: 0 (pid: 1195223) of binary: /u/cohanlon/micromamba/envs/sarformer/bin/python3.9
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/bin/torchrun", line 8, in <module>
+    sys.exit(main())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 348, in wrapper
+    return f(*args, **kwargs)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 901, in main
+    run(args)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/run.py", line 892, in run
+    elastic_launch(
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 133, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/distributed/launcher/api.py", line 264, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+run_training_sarformer.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2024-12-19_16:28:29
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 1195224)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[2]:
+  time      : 2024-12-19_16:28:29
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 2 (local_rank: 2)
+  exitcode  : 1 (pid: 1195225)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[3]:
+  time      : 2024-12-19_16:28:29
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 3 (local_rank: 3)
+  exitcode  : 1 (pid: 1195226)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[4]:
+  time      : 2024-12-19_16:28:29
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 4 (local_rank: 4)
+  exitcode  : 1 (pid: 1195227)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+[5]:
+  time      : 2024-12-19_16:28:29
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 5 (local_rank: 5)
+  exitcode  : 1 (pid: 1195228)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2024-12-19_16:28:29
+  host      : gpuc02.delta.ncsa.illinois.edu
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 1195223)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

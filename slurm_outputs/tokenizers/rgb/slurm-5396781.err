@@ -1,0 +1,77 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.0   6) default-s11
+
+ 
+
+wandb: Currently logged in as: charlescohanlon (sarformer). Use `wandb login --relogin` to force relogin
+wandb: wandb version 0.18.5 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.17.5
+wandb: Run data is saved locally in /u/cohanlon/sarformer/wandb/run-20241028_161155-jsu7eqkc
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run rgb/ViTB-ViTB_16k_224
+wandb: ⭐️ View project at https://wandb.ai/sarformer/rgb_tokenizer
+wandb: 🚀 View run at https://wandb.ai/sarformer/rgb_tokenizer/runs/jsu7eqkc
+wandb: - 61.953 MB of 61.953 MB uploadedwandb: \ 61.953 MB of 61.953 MB uploadedwandb: | 61.953 MB of 61.953 MB uploadedwandb: / 61.972 MB of 63.273 MB uploadedwandb: 
+wandb: Run history:
+wandb:    [Epoch] code_loss ▂▃▂▁█▁▁▁▁▁▁▂▁▁▃▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:    [Epoch] grad_norm ▄▂▂▂█▂▁▃▄▂▂▂▁▂▄▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         [Epoch] loss ▃▃▂▁█▁▁▁▁▁▁▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           [Epoch] lr ▆██████▇▇▇▇▇▇▆▆▆▆▅▅▅▄▄▄▄▃▃▃▃▂▂▂▂▂▁▁▁▁▁▁▁
+wandb:       [Epoch] min_lr ▆██████▇▇▇▇▇▇▆▆▆▆▅▅▅▄▄▄▄▃▃▃▃▂▂▂▂▂▁▁▁▁▁▁▁
+wandb: [Epoch] reconst_loss ▅▂▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: [Epoch] weight_decay ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: [Eval] CodebookUsage ▁▁▂▂▃▃▄▄▄▅▅▄▅▅▄▅▃▇▇▇▇▇▇▇▇███████████████
+wandb:           [Eval] FID ▁
+wandb:         [Eval] LPIPS █▄▃▃▂▂▂▂▂▁▁▂▁▂▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:           [Eval] MAE █▃▂▂▂▁▂▂▂▁▁▂▁▂▂▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:       [Eval] MS-SSIM ▁▄▅▆▇▇▇▇▇▇▇▆▇▇▆▇▆███████████████████████
+wandb:           [Eval] MSE █▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:          [Eval] PSNR ▁▅▆▇▇▇▇▇▇▇▇▇▇▇▇▇▆███████████████████████
+wandb:     [Eval] code_loss ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:          [Eval] loss █▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:  [Eval] reconst_loss █▂▂▁▁▁▁▁▁▁▁▁▁▁▁▁▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:            code_loss ▃▅▁▁█▁▁▁▁▁▁▁▁▁▁▇▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                epoch ▁▁▁▂▂▂▂▂▂▃▃▃▃▃▄▄▄▄▄▄▅▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇███
+wandb:            grad_norm ▇▂▁▃▅▁▂▂▁▁▂▂▁▁▁█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                 loss ▇▄▁▂█▁▁▁▁▁▁▂▁▁▁▇▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                   lr ███████▇▇▇▇▇▇▆▆▆▆▅▅▅▄▄▄▄▃▃▃▃▂▂▂▂▂▁▁▁▁▁▁▁
+wandb:         n_parameters ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         reconst_loss █▂▁▂▃▁▁▁▁▁▁▁▁▁▁▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:         weight_decay ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb: 
+wandb: Run summary:
+wandb:    [Epoch] code_loss 0.14933
+wandb:    [Epoch] grad_norm 0.06611
+wandb:         [Epoch] loss 0.27275
+wandb:           [Epoch] lr 0.0
+wandb:       [Epoch] min_lr 0.0
+wandb: [Epoch] reconst_loss 0.12342
+wandb: [Epoch] weight_decay 0.05
+wandb: [Eval] CodebookUsage 0.93219
+wandb:           [Eval] FID 191.51251
+wandb:         [Eval] LPIPS 0.57863
+wandb:           [Eval] MAE 0.04242
+wandb:       [Eval] MS-SSIM 0.81992
+wandb:           [Eval] MSE 0.00377
+wandb:          [Eval] PSNR 24.23645
+wandb:     [Eval] code_loss 0.0
+wandb:          [Eval] loss 0.12755
+wandb:  [Eval] reconst_loss 0.12755
+wandb:            code_loss 0.14433
+wandb:                epoch 999
+wandb:            grad_norm 0.06486
+wandb:                 loss 0.26618
+wandb:                   lr 0.0
+wandb:         n_parameters 181705760
+wandb:         reconst_loss 0.12185
+wandb:         weight_decay 0.05
+wandb: 
+wandb: 🚀 View run rgb/ViTB-ViTB_16k_224 at: https://wandb.ai/sarformer/rgb_tokenizer/runs/jsu7eqkc
+wandb: ⭐️ View project at: https://wandb.ai/sarformer/rgb_tokenizer
+wandb: Synced 5 W&B file(s), 280 media file(s), 2 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20241028_161155-jsu7eqkc/logs
+wandb: WARNING The new W&B backend becomes opt-out in version 0.18.0; try it out with `wandb.require("core")`! See https://wandb.me/wandb-core for more information.

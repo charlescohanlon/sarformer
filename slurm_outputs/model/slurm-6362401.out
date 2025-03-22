@@ -1,0 +1,11 @@
+job is starting on gpuc02.delta.ncsa.illinois.edu
+| distributed init (rank 0): env://, gpu 0
+| distributed init (rank 7): env://, gpu 7
+| distributed init (rank 1): env://, gpu 1
+| distributed init (rank 2): env://, gpu 2
+| distributed init (rank 6): env://, gpu 6
+| distributed init (rank 4): env://, gpu 4
+| distributed init (rank 3): env://, gpu 3
+| distributed init (rank 5): env://, gpu 5
+dataset_train size = 40780
+dataset_val size = 416

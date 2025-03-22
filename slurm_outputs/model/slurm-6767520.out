@@ -1,0 +1,44 @@
+job is starting on gpuc05.delta.ncsa.illinois.edu
+| distributed init (rank 0): env://, gpu 0
+| distributed init (rank 6): env://, gpu 6
+| distributed init (rank 1): env://, gpu 1
+| distributed init (rank 3): env://, gpu 3
+| distributed init (rank 2): env://, gpu 2
+| distributed init (rank 5): env://, gpu 5
+| distributed init (rank 7): env://, gpu 7
+| distributed init (rank 4): env://, gpu 4
+dataset_train size = 40780
+dataset_val size = 416
+Namespace(run_name='model/misc/Baseline_uniform_regrpoint', batch_size=128, full_img_size=673, eff_img_size=447, target_size=224, mask_proportion=0.6, patch_size=None, epochs=500, accum_iter=1, save_ckpt_freq=25, model='baseline_uniform', dtype='bf16', cond_domains=['rgb', 'depth'], loss_type='none', distance_type='euclidean', objective='lpl', is_baseline=False, hflip=0.0, vflip=0.0, finetune='', opt='adamw', opt_eps=1e-08, opt_betas=[0.9, 0.99], compute_grad_norm=True, clip_grad=None, skip_grad=None, momentum=0.9, weight_decay=0.05, weight_decay_end=None, blr=0.0001, min_blr=0.0, lr_and_wd_scheduler='cosine', warmup_epochs=50, cooldown_epochs=10, eval_data_path='/scratch/bdej/cohanlon/data/eval', num_eval_metrics_samples=416, num_logged_images=0, eval_batch_size=None, eval_freq=25, eval_metric_freq=10, eval_image_log_freq=0, dist_eval=True, eval_only=False, output_dir='/scratch/bdej/cohanlon/checkpoints/sarformer/model/misc/Baseline_uniform_regrpoint', device='cuda', seed=0, start_epoch=0, num_workers=110, pin_mem=True, show_user_warnings=False, log_wandb=True, wandb_project='model', wandb_entity='sarformer', wandb_run_name='misc/Baseline_uniform_regrpoint', dist_url='env://', print_all=False, warmup_lr=1e-06, min_lr=0.0, eval_metrics_freq=0, data_path='/scratch/bdej/cohanlon/data/train', config_path='cfgs/sarformer/model/misc/Baseline_uniform_regrpoint.yaml', rank=0, world_size=8, gpu=0, distributed=True, dist_backend='nccl', all_domains=['rgb', 'depth', 'target_distribution'], is_pretraining=False)
+Creating model: baseline_uniform conditioned on ['rgb', 'depth']
+Model = PointRegressionBaseline(
+  (_): Linear(in_features=4, out_features=1, bias=True)
+)
+Number of params: 5e-06 M
+LR = 0.00040000
+Min LR = 0.00000000
+Total (effective) batch size = 1024
+Accumulate grad iterations = 1
+Number of training steps = 39
+Number of training examples per epoch = 39936
+Param groups = {
+  "decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "_.weight"
+    ],
+    "lr_scale": 1.0
+  },
+  "no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "_.bias"
+    ],
+    "lr_scale": 1.0
+  }
+}
+optimizer settings: {'lr': 0.0004, 'weight_decay': 0.0, 'eps': 1e-08, 'betas': [0.9, 0.99]}
+Set warmup steps = 1950
+Set warmup steps = 0
+Max WD = 0.0500000, Min WD = 0.0500000
+Start training for 500 epochs

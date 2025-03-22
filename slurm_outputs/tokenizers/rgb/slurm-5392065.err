@@ -1,0 +1,42 @@
+Running "module reset". Resetting modules to system default. The following $MODULEPATH directories have been removed: None
+
+Currently Loaded Modules:
+  1) gcc/11.4.0      3) cuda/11.8.0         5) slurm-env/0.1
+  2) openmpi/4.1.6   4) cue-login-env/1.0   6) default-s11
+
+ 
+
+wandb: Currently logged in as: charlescohanlon (sarformer). Use `wandb login --relogin` to force relogin
+wandb: - Waiting for wandb.init()...wandb: \ Waiting for wandb.init()...wandb: wandb version 0.18.5 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.17.5
+wandb: Run data is saved locally in /u/cohanlon/sarformer/wandb/run-20241028_145856-3i218qjp
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run rgb/ViTB-ViTB_16k_224
+wandb: ⭐️ View project at https://wandb.ai/sarformer/rgb_tokenizer
+wandb: 🚀 View run at https://wandb.ai/sarformer/rgb_tokenizer/runs/3i218qjp
+slurmstepd: error: *** JOB 5392065 ON gpuc05 CANCELLED AT 2024-10-28T16:09:31 ***
+Traceback (most recent call last):
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/queues.py", line 244, in _feed
+    obj = _ForkingPickler.dumps(obj)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/reduction.py", line 51, in dumps
+    cls(buf, protocol).dump(obj)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/site-packages/torch/multiprocessing/reductions.py", line 570, in reduce_storage
+    df = multiprocessing.reduction.DupFd(fd)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/reduction.py", line 198, in DupFd
+    return resource_sharer.DupFd(fd)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/resource_sharer.py", line 53, in __init__
+    self._id = _resource_sharer.register(send, close)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/resource_sharer.py", line 76, in register
+    self._start()
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/resource_sharer.py", line 126, in _start
+    self._listener = Listener(authkey=process.current_process().authkey)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/connection.py", line 442, in __init__
+    address = address or arbitrary_address(family)
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/connection.py", line 76, in arbitrary_address
+    return tempfile.mktemp(prefix='listener-', dir=util.get_temp_dir())
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/multiprocessing/util.py", line 146, in get_temp_dir
+    tempdir = tempfile.mkdtemp(prefix='pymp-')
+  File "/u/cohanlon/micromamba/envs/sarformer/lib/python3.9/tempfile.py", line 379, in mkdtemp
+    _os.mkdir(file, 0o700)
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/pymp-b54yp1ph'
