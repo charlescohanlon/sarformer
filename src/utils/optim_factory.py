@@ -215,13 +215,10 @@ def create_optimizer(
     get_layer_scale=None,
     filter_bias_and_bn=True,
     skip_list=None,
-    is_baseline=False,
 ):
     """
     Model can either be a single nn.Module, or a dictionary with {'model': model, 'balancer': balancer}.
     """
-    if is_baseline:
-        return None  # no optimizer for baseline runs
     opt_lower = args.opt.lower()
     weight_decay = args.weight_decay
     try:

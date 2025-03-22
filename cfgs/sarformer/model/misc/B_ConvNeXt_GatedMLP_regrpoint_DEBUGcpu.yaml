@@ -1,0 +1,51 @@
+run_name: auto
+
+# Model
+model: convnext_gatedmlp_b
+cond_domains: ["depth"]
+target_size: 224
+
+# Train
+objective: lpl
+loss_type: none # Regression on point
+dtype: bf16 # fp32, fp16 or bf16
+warmup_epochs: 50
+epochs: 500
+opt: adamw
+opt_betas: [0.9, 0.99]
+blr: 0.0001 # base_lr = 1e-4, lr = base_lr * batch_size / 256
+warmup_lr: 0.000001 # 1e-6
+min_lr: 0.
+batch_size: 128 # per GPU
+save_ckpt_freq: 100 # in epochs
+weight_decay: 0.05 # the default
+lr_and_wd_scheduler: cosine
+
+# Augmentation
+full_img_size: 673
+eff_img_size: 447
+hflip: 0.0
+vflip: 0.0
+
+# Eval
+eval_freq: 2
+eval_metrics_freq: 0
+eval_image_log_freq: 0
+num_eval_metrics_samples: 416 # Number of samples to use for evaluating image metrics during training.
+num_logged_images: 0
+dist_eval: True
+data_path: '/scratch/bdej/cohanlon/data/train'
+eval_data_path: '/scratch/bdej/cohanlon/data/eval'
+
+# Logging
+log_wandb: False
+wandb_project: model
+wandb_entity: sarformer
+wandb_run_name: auto
+output_dir: '/scratch/bdej/cohanlon/checkpoints/sarformer/auto'
+show_user_warnings: False
+compute_grad_norm: True
+
+# Misc.
+device: cpu
+num_workers: 59 # for data loaders

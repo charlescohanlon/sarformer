@@ -715,8 +715,10 @@ def main(args):
         model = DDP(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
 
-    optimizer = create_optimizer(args, model_without_ddp, is_baseline=args.is_baseline)
-    loss_scaler = NativeScaler(enabled=dtype == torch.float16)
+    optimizer = create_optimizer(args, model_without_ddp)
+    loss_scaler = NativeScaler(
+        enabled=dtype == torch.float16, is_baseline=args.is_baseline
+    )
 
     # LR and WD schedules
     if args.weight_decay_end is None:

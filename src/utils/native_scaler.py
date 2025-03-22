@@ -22,8 +22,9 @@ import torch
 class NativeScalerWithGradNormCount:
     state_dict_key = "amp_scaler"
 
-    def __init__(self, enabled=True):
+    def __init__(self, enabled=True, is_baseline=False):
         self._scaler = torch.amp.GradScaler("cuda", enabled=enabled)
+        self.is_baseline = is_baseline
 
     def __call__(
         self,
@@ -36,9 +37,8 @@ class NativeScalerWithGradNormCount:
         update_grad=True,
         compute_grad_norm=True,
     ):
-        if optimizer is None:
-            return None
-        self._scaler.scale(loss).backward(create_graph=create_graph)
+        if not self.is_baseline:
+            self._scaler.scale(loss).backward(create_graph=create_graph)
         if update_grad:
             if clip_grad is not None:
                 assert parameters is not None

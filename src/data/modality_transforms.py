@@ -290,7 +290,7 @@ class DepthTransform(ImageTransform):
         return img
 
     @staticmethod
-    def depth_robust_scaling(depth, no_data_value=-999999.0):
+    def depth_robust_scaling(depth):
         """Depth robust scaling
 
         :param depth: Depth map
@@ -298,13 +298,10 @@ class DepthTransform(ImageTransform):
         :return: Robustly scaled depth map
         """
         # Remove no-data values and nans
-        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
-        valid_vals = depth[removal_mask]
-
-        return (depth - np.median(valid_vals)) / (iqr(valid_vals) + 1e-6)
+        return (depth - np.median(depth)) / (iqr(depth) + 1e-6)
 
     @staticmethod
-    def depth_minmax_scaling(depth, no_data_value=-999999.0):
+    def depth_minmax_scaling(depth):
         """Depth relative normalization
 
         :param depth: Depth map
@@ -312,32 +309,20 @@ class DepthTransform(ImageTransform):
         :return: Relative normalized depth map
         """
         # Remove no-data values and nans
-        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
-        valid_vals = depth[removal_mask]
-
-        min_val = valid_vals.min()
-        max_val = valid_vals.max()
+        min_val = depth.min()
+        max_val = depth.max()
 
         return (depth - min_val) / (max_val - min_val + 1e-6)
 
     @staticmethod
-    def truncated_depth_standardization(
-        depth, thresh: float = 0.0, no_data_value=-999999.0
-    ):
+    def truncated_depth_standardization(depth, thresh: float = 0.0):
         """Truncated depth standardization
 
         :param depth: Depth map
         :param thresh: Threshold
-        :param no_data_value: the value to be treated as no data
-        :return: Robustly standardized depth map
         """
         # Flatten depth and remove bottom and top 10% of values
         trunc_depth = torch.sort(depth.reshape(-1), dim=0)[0]
-
-        # Remove no-data values and nans
-        removal_mask = (depth != no_data_value).logical_and(np.isfinite(depth))
-        trunc_depth = trunc_depth[removal_mask]
-
         trunc_depth = trunc_depth[
             int(thresh * trunc_depth.shape[0]) : int(
                 (1 - thresh) * trunc_depth.shape[0]
