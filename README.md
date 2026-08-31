@@ -4,7 +4,7 @@ A multimodal deep learning framework for predicting the locations of missing per
 
 ## Overview
 
-SARFormer fuses satellite imagery, elevation maps, and textual incident metadata to predict where a missing person is most likely to be found. The system is trained on **SAR** (historical search and rescue incident records), a large-scale dataset of 1M+ real-world SAR cases spanning 25+ geographic regions across the United States.
+SARFormer fuses satellite imagery, elevation maps, and textual incident metadata to predict where a missing person is most likely to be found. The system is trained on historical search and rescue incident records spanning many geographic regions across the United States. (The training data is not distributed with this repository.)
 
 ### Input Modalities
 
@@ -51,9 +51,8 @@ sarformer/
 │   ├── models/                  # SARFormer, ConvNeXt regression, UNet, baselines
 │   ├── data/                    # Multimodal dataset loader and per-modality transforms
 │   └── utils/                   # Custom tokenizer, CLIP utilities, optimization
-├── sar/                       # SAR dataset CSV files (25+ regions)
 ├── dataset_gen/                 # Dataset generation and preprocessing scripts
-├── tif_gen/               # GeoTIFF generation utilities
+├── tif_gen/                     # GeoTIFF generation utilities
 ├── notebooks/                   # Analysis and visualization notebooks
 └── job_scripts/                 # SLURM job submission scripts
 ```
@@ -70,3 +69,7 @@ pip install -e .
 # Optional: install xformers for memory-efficient attention
 pip install -e ".[fast]"
 ```
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
